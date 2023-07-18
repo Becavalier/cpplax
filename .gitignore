@@ -1,0 +1,9 @@
+CMakeFiles/
+cmake_install.cmake
+CmakeCache.txt
+Makefile
+.DS_Store
+*.dSYM/
+*.a
+/build*
+.vscode/
