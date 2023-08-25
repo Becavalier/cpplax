@@ -57,6 +57,10 @@ class Scanner {
   inline bool isAlphaNumeric(char c) const {
     return isDigit(c) || isAlpha(c);
   }
+  inline char peekNext(void) {
+    if (current + 1 == cend(source)) return '\0';
+    return *(current + 1); 
+  }
   void scanString(void) {
     while (!isAtEnd() && *current != '"') {
       if (*current == '\n') line++;  // Support multi-line strings.
@@ -72,7 +76,7 @@ class Scanner {
   }
   void scanNumber(void) {
     while (isDigit(*current)) advance();
-    if (*current == '.' && isDigit(*(current + 1))) {  // Find the fractional part (if any).
+    if (*current == '.' && isDigit(peekNext())) {  // Find the fractional part (if any).
       advance();
       while (isDigit(*current)) advance();  // Keep consuming till the last digit.
     }
@@ -111,6 +115,15 @@ class Scanner {
           // A comment goes until the end of the line, then we skip the current line.
           while (!isAtEnd() && *current != '\n') {
             advance();
+          }
+        } else if (forwardMatch('*')) {
+          while (!isAtEnd()) {
+            if (*current != '*' || peekNext() != '/') {
+              advance();
+            } else {
+              current += 2;  // Skip the latter part of the comment pair.
+              break;
+            }
           }
         } else {
           addToken(TokenType::SLASH);
