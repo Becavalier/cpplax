@@ -25,6 +25,4 @@ struct Error {
   }
 };
 
-bool Error::hadError = false;
-
 #endif

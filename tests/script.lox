@@ -1,0 +1,5 @@
+/* Here are some comments. */
+var name = "Jason Yu";  // Name.
+var age = 29.0;  // Age.
+
+
