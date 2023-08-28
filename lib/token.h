@@ -62,14 +62,13 @@ enum class TokenType : uint8_t {
 };
 
 struct Token {
-  using typeLiteral = std::variant<std::monostate, std::string, double>;
+  using typeLiteral = std::variant<std::monostate, std::string, double, bool>;
   friend std::ostream& operator<<(std::ostream& os, const Token& token);
   TokenType type;
   std::string lexeme;
   typeLiteral literal;
   int line;
-  Token(TokenType type, std::string lexeme, typeLiteral literal, int line) 
-    : type(type), lexeme(std::move(lexeme)), literal(literal), line(line) {}
+  Token(TokenType type, std::string lexeme, typeLiteral literal, int line) : type(type), lexeme(std::move(lexeme)), literal(literal), line(line) {}
   static std::string stringifyLiteralValue(const typeLiteral&);
 };
 

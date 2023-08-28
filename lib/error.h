@@ -12,12 +12,9 @@ struct Error {
     const std::string&& where, 
     const std::string&& msg) {
     std::cout 
-      << "[Line " 
-      << line 
-      << "] Error" 
-      << where 
-      << ": " 
-      << msg << std::endl;
+      << "[Line " << line << "] Error " 
+      << where << ": " << msg 
+      << std::endl;
     hadError = true;
   }
   static void error(int line, std::string&& msg) {

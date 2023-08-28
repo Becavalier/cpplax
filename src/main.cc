@@ -7,13 +7,19 @@
 #include "lib/error.h"
 #include "lib/token.h"
 #include "lib/scanner.h"
-#include "lib/expr.h"
+#include "lib/parser.h"
 
 #define PATH_ARG_IDX 1
 
 void run(const std::string& code) {
+  // Scanning (lexing).
   Scanner scanner { code };
-  std::vector<Token> tokens = scanner.scanTokens();
+  const std::vector<Token> tokens = scanner.scanTokens();
+
+  // Parsing.
+  Parser parser { tokens };
+  const auto ast = parser.parse();
+
   for (auto i = tokens.begin(); i != tokens.end(); ++i) {
     std::cout << *i << std::endl;
   }
@@ -51,21 +57,5 @@ int main(int argc, char* argv[]) {
   } else {
     runPrompt();
   }
-
-  Token::typeLiteral lv1 { 123.0 };
-  Token::typeLiteral lv2 {45.67};
-
-  BinaryExpr expr { 
-    UnaryExpr {
-      Token { TokenType::MINUS, "-", std::monostate {}, 1},
-      LiteralExpr { lv1 }
-    }, 
-    Token { TokenType::STAR, "*", std::monostate {}, 1}, 
-    GroupingExpr {
-      LiteralExpr { lv2 }
-    }, 
-  };
-  AstPrinter ast {};
-  std::cout << std::any_cast<std::string const&>(ast.print(expr)) << std::endl;
   return 0;
 }

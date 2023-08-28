@@ -4,6 +4,7 @@
 #include <string>
 #include <any>
 #include <sstream>
+#include <memory>
 #include "lib/token.h"
 
 // Symbols.
@@ -37,7 +38,7 @@ struct Visitor {
 
 struct Expr {
   virtual std::any accept(Visitor* visitor) const = 0;
-  Expr() = default;
+  virtual ~Expr() {};
 };
 
 // struct AssignExpr : public Expr {
@@ -78,26 +79,27 @@ struct Expr {
 // };
 
 struct BinaryExpr : public Expr {
-  const Expr& left;
   const Token& op;
-  const Expr& right;
-  BinaryExpr(const Expr& left, const Token& op, const Expr& right) : left(left), op(op), right(right) {}
+  const std::shared_ptr<const Expr> left;
+  const std::shared_ptr<const Expr> right;
+  BinaryExpr(const std::shared_ptr<const Expr> left, const Token& op, const std::shared_ptr<const Expr> right) 
+    : op(op), left(left), right(right) {}
   std::any accept(Visitor* visitor) const override {
     return visitor->visitBinaryExpr(this);
   }
 };
 
 struct LiteralExpr : public Expr {
-  const Token::typeLiteral& value;
-  LiteralExpr(const Token::typeLiteral& value) : value(value) {}
+  const Token::typeLiteral&& value;
+  LiteralExpr(const Token::typeLiteral&& value) : value(std::move(value)) {}
   std::any accept(Visitor* visitor) const override {
     return visitor->visitLiteralExpr(this);
   }
 };
 
 struct GroupingExpr : public Expr {
-  const Expr& expression;
-  GroupingExpr(const Expr& expression) : expression(expression) {}
+  const std::shared_ptr<const Expr> expression;
+  GroupingExpr(const std::shared_ptr<const Expr> expression) : expression(expression) {}
   std::any accept(Visitor* visitor) const override {
     return visitor->visitGroupingExpr(this);
   }
@@ -105,41 +107,41 @@ struct GroupingExpr : public Expr {
 
 struct UnaryExpr : public Expr {
   const Token& op;
-  const Expr& right;
-  UnaryExpr(const Token& op, const Expr& right) : op(op), right(right) {}
+  const std::shared_ptr<const Expr> right;
+  UnaryExpr(const Token& op, const std::shared_ptr<const Expr> right) : op(op), right(right) {}
   std::any accept(Visitor* visitor) const override {
     return visitor->visitUnaryExpr(this);
   }
 };
 
-class AstPrinter : public Visitor {
-  template<typename... Ts>
-  std::string parenthesize(const std::string& name, const Ts&... args) {
-    std::stringstream ss;
-    ss << '(' << name;
-    auto _expandArgPack = [&](const auto& arg) -> void {
-      ss << ' ' << std::any_cast<std::string const&>(arg.accept(this));
-    };
-    (_expandArgPack(args), ...);
-    ss << ')';
-    return ss.str();
-  }
-  std::any visitBinaryExpr(const BinaryExpr* expr) override {
-    return parenthesize(expr->op.lexeme, expr->left, expr->right);
-  }
-  std::any visitLiteralExpr(const LiteralExpr* expr) override {
-    return Token::stringifyLiteralValue(expr->value);
-  }
-  std::any visitGroupingExpr(const GroupingExpr* expr) override {
-    return parenthesize("group", expr->expression);
-  }
-  std::any visitUnaryExpr(const UnaryExpr* expr) override {
-    return parenthesize(expr->op.lexeme, expr->right);
-  }
- public:
-  std::any print(Expr& expr) {
-    return expr.accept(this);
-  }
-};
+// class AstPrinter : public Visitor {
+//   template<typename... Ts>
+//   std::string parenthesize(const std::string& name, const Ts&... args) {
+//     std::stringstream ss;
+//     ss << '(' << name;
+//     auto _expandArgPack = [&](const auto& arg) -> void {
+//       ss << ' ' << std::any_cast<std::string const&>(arg.accept(this));
+//     };
+//     (_expandArgPack(args), ...);
+//     ss << ')';
+//     return ss.str();
+//   }
+//   std::any visitBinaryExpr(const BinaryExpr* expr) override {
+//     return parenthesize(expr->op.lexeme, expr->left, expr->right);
+//   }
+//   std::any visitLiteralExpr(const LiteralExpr* expr) override {
+//     return Token::stringifyLiteralValue(expr->value);
+//   }
+//   std::any visitGroupingExpr(const GroupingExpr* expr) override {
+//     return parenthesize("group", expr->expression);
+//   }
+//   std::any visitUnaryExpr(const UnaryExpr* expr) override {
+//     return parenthesize(expr->op.lexeme, expr->right);
+//   }
+//  public:
+//   std::any print(Expr& expr) {
+//     return expr.accept(this);
+//   }
+// };
 
 #endif
