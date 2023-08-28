@@ -6,4 +6,3 @@ Makefile
 *.dSYM/
 *.a
 /build*
-.vscode/
