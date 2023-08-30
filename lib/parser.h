@@ -6,28 +6,55 @@
 #include <string>
 #include "lib/token.h"
 #include "lib/expr.h"
+#include "lib/error.h"
+
+class ParseError : public std::exception {};
 
 class Parser {
   const std::vector<Token>& tokens;
   std::vector<Token>::const_iterator current;
+  
+  static auto error(const Token& token, const std::string& msg) {
+    Error::error(token, msg);
+    return ParseError {};
+  }
   auto& peek(void) {
     return *current;
   }
   auto& previous(void) {
     return *(current - 1);
   }
-  bool isAtEnd(void) {
+  auto isAtEnd(void) {
     return current == tokens.cend();
   }
   auto& advance(void) {
     if (!isAtEnd()) current++;
     return previous();
   }
-  bool check(TokenType type) {
-    return isAtEnd() ? peek().type == type : false;
+  auto check(const TokenType& type) {
+    return isAtEnd() ? false : peek().type == type;
   }
-  bool match(const std::vector<TokenType>& types) {
-    for (const auto type : types) {  // Check if it matches either of the rules.
+  void synchronize(void) {
+    advance();
+    while (!isAtEnd()) {
+      if (previous().type == TokenType::SEMICOLON) return;
+      switch (peek().type) {  // Check if it's the statement boundary.
+        case TokenType::CLASS:
+        case TokenType::FUN:
+        case TokenType::VAR:
+        case TokenType::FOR:
+        case TokenType::IF:
+        case TokenType::WHILE:
+        case TokenType::PRINT:
+        case TokenType::RETURN:
+          return;
+        default:;
+      }
+      advance();
+    }
+  }
+  auto match(const std::vector<TokenType>& types) {
+    for (const auto& type : types) {  // Check if it matches either of the rules.
       if (check(type)) {
         advance();
         return true;
@@ -35,21 +62,22 @@ class Parser {
     }
     return false;
   }
-  bool match(const TokenType& type) {
+  auto match(const TokenType& type) {
     if (check(type)) {
       advance();
       return true;
     }
     return false;
   }
-  Token consume(TokenType type, std::string msg) {
-
+  const auto& consume(TokenType type, const std::string& msg) {
+    if (check(type)) return advance();
+    throw error(peek(), msg);
   }
-  std::shared_ptr<const Expr> expression(void) {
+  std::shared_ptr<Expr> expression(void) {
     // expression → equality ;
     return equality();
   }
-  std::shared_ptr<const Expr> equality(void) {
+  std::shared_ptr<Expr> equality(void) {
     // equality → comparison ( ( "!=" | "==" ) comparison )* ;
     auto expr = comparison();
     while (match({ TokenType::BANG_EQUAL, TokenType::EQUAL_EQUAL, })) {
@@ -59,7 +87,7 @@ class Parser {
     }
     return expr;
   }
-  std::shared_ptr<const Expr> comparison(void) {
+  std::shared_ptr<Expr> comparison(void) {
     // comparison → term ( ( ">" | ">=" | "<" | "<=" ) term )* ;
     auto expr = term();
     while (match({ TokenType::GREATER, TokenType::GREATER_EQUAL, TokenType::LESS, TokenType::LESS_EQUAL, })) {
@@ -69,7 +97,7 @@ class Parser {
     }
     return expr;
   }
-  std::shared_ptr<const Expr> term(void) {
+  std::shared_ptr<Expr> term(void) {
     // term → factor ( ( "-" | "+" ) factor )* ;
     auto expr = factor();
     while (match({ TokenType::MINUS, TokenType::PLUS, })) {
@@ -79,7 +107,7 @@ class Parser {
     }
     return expr;
   }
-  std::shared_ptr<const Expr> factor(void) {
+  std::shared_ptr<Expr> factor(void) {
     // factor → unary ( ( "/" | "*" ) unary )* ;
     auto expr = unary();
     while (match({ TokenType::SLASH, TokenType::STAR, })) {
@@ -89,7 +117,7 @@ class Parser {
     }
     return expr;
   }
-  std::shared_ptr<const Expr> unary(void) {
+  std::shared_ptr<Expr> unary(void) {
     // unary → ( "!" | "-" ) unary | primary ;
     if (match({ TokenType::BANG, TokenType::MINUS, })) {
       const auto& op = previous();
@@ -98,7 +126,7 @@ class Parser {
     }
     return primary();
   }
-  std::shared_ptr<const Expr> primary(void) {
+  std::shared_ptr<Expr> primary(void) {
     // primary → NUMBER | STRING | "true" | "false" | "nil" | "(" expression ")" ;
     if (match(TokenType::FALSE)) return std::make_shared<LiteralExpr>(false);
     if (match(TokenType::TRUE)) return std::make_shared<LiteralExpr>(true);
@@ -111,13 +139,18 @@ class Parser {
       consume(TokenType::RIGHT_PAREN, "expect ')' after expression.");  // Find the closing pair.
       return std::make_shared<GroupingExpr>(expr);
     }
+    throw error(peek(), "expect expression.");
   }
  public:
   Parser(const std::vector<Token>& tokens) : tokens(tokens) {
     current = tokens.cbegin();
   }
-  std::shared_ptr<const Expr> parse(void) {
-    return expression();
+  std::shared_ptr<Expr> parse(void) {
+    try {
+      return expression();
+    } catch(ParseError error) {
+      return nullptr;
+    }
   }
 };
 
