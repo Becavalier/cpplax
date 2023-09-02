@@ -8,14 +8,14 @@
 #include <unordered_map>
 #include "lib/token.h"
 #include "lib/error.h"
+#include "lib/type.h"
 
-using typeKeywordList = std::unordered_map<std::string, TokenType>;
 class Scanner {
+  int line = 0;
   std::string source;
   std::vector<Token> tokens;
   std::string::const_iterator start;  // Points to the first char in the lexeme.
   std::string::const_iterator current;  // Points at the character currently being considered.
-  int line = 1;
   static const typeKeywordList keywords;
  public:
   Scanner(const std::string& code) : source(code) {};
@@ -29,7 +29,7 @@ class Scanner {
       scanToken();
     }
     // Mark the end of file.
-    tokens.emplace_back(TokenType::EOF, "", std::monostate {}, line);
+    tokens.emplace_back(TokenType::SOURCE_EOF, "", std::monostate {}, line);
     return tokens;
   }
   char advance(void) {
@@ -63,7 +63,8 @@ class Scanner {
     return *(current + 1); 
   }
   void scanString(void) {
-    while (!isAtEnd() && *current != '"') {
+    while (true) {
+      if (isAtEnd() || (*current == '"' && *(current - 1) != '\\')) break;
       if (*current == '\n') line++;  // Support multi-line strings.
       advance();
     }

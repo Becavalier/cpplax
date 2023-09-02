@@ -7,6 +7,7 @@
 #include <variant>
 #include "lib/token.h"
 #include "lib/helper.h"
+#include "lib/type.h"
 
 // Symbols.
 struct BinaryExpr;
@@ -22,40 +23,34 @@ struct ThisExpr;
 struct VariableExpr;
 struct UnaryExpr;
 
-using typeRuntimeValue = std::variant<
-  std::monostate, 
-  std::string, 
-  double, 
-  bool
->;
-struct Visitor {
-  // virtual typeRuntimeValue visitAssignExpr(const AssignExpr* expr) = 0;
-  virtual typeRuntimeValue visitBinaryExpr(const BinaryExpr* expr) = 0;
+struct ExprVisitor {
+  virtual typeRuntimeValue visitAssignExpr(const AssignExpr*) = 0;
+  virtual typeRuntimeValue visitBinaryExpr(const BinaryExpr*) = 0;
   // virtual typeRuntimeValue visitCallExpr(const CallExpr* expr) = 0;
   // virtual typeRuntimeValue visitGetExpr(const GetExpr* expr) = 0;
-  virtual typeRuntimeValue visitGroupingExpr(const GroupingExpr* expr) = 0;
-  virtual typeRuntimeValue visitLiteralExpr(const LiteralExpr* expr) = 0;
+  virtual typeRuntimeValue visitGroupingExpr(const GroupingExpr*) = 0;
+  virtual typeRuntimeValue visitLiteralExpr(const LiteralExpr*) = 0;
   // virtual typeRuntimeValue visitLogicalExpr(const LogicalExpr* expr) = 0;
   // virtual typeRuntimeValue visitSetExpr(const SetExpr* expr) = 0;
   // virtual typeRuntimeValue visitSuperExpr(const SuperExpr* expr) = 0;
   // virtual typeRuntimeValue visitThisExpr(const ThisExpr* expr) = 0;
-  virtual typeRuntimeValue visitUnaryExpr(const UnaryExpr* expr) = 0;
-  // virtual typeRuntimeValue visitVariableExpr(const VariableExpr* expr) = 0;
+  virtual typeRuntimeValue visitUnaryExpr(const UnaryExpr*) = 0;
+  virtual typeRuntimeValue visitVariableExpr(const VariableExpr*) = 0;
 };
 
 struct Expr {
-  virtual typeRuntimeValue accept(Visitor* visitor) = 0;
+  virtual typeRuntimeValue accept(ExprVisitor* visitor) = 0;
   virtual ~Expr() {};
 };
 
-// struct AssignExpr : public Expr {
-//   const Token& name;
-//   const Expr& value;
-//   AssignExpr(const Token& name, const Expr& value) : name(name), value(value) {}
-//   typeRuntimeValue accept(Visitor* visitor) const override {
-//     return visitor->visitAssignExpr(this);
-//   }
-// };
+struct AssignExpr : public Expr {
+  const Token& name;  // The variable being assigned to, rather than an "Expr".
+  const std::shared_ptr<Expr> value;
+  AssignExpr(const Token& name, std::shared_ptr<Expr> value) : name(name), value(value) {}
+  typeRuntimeValue accept(ExprVisitor* visitor) override {
+    return visitor->visitAssignExpr(this);
+  }
+};
 
 // struct CallExpr : public Expr {
 
@@ -81,9 +76,13 @@ struct Expr {
 
 // };
 
-// struct VariableExpr : public Expr {
-
-// };
+struct VariableExpr : public Expr {
+  const Token& name;
+  VariableExpr(const Token& name) : name(name) {}
+  typeRuntimeValue accept(ExprVisitor* visitor) override {
+    return visitor->visitVariableExpr(this);
+  }
+};
 
 struct BinaryExpr : public Expr {
   const Token& op;
@@ -91,15 +90,15 @@ struct BinaryExpr : public Expr {
   const std::shared_ptr<Expr> right;
   BinaryExpr(std::shared_ptr<Expr> left, const Token& op, std::shared_ptr<Expr> right) 
     : op(op), left(left), right(right) {}
-  typeRuntimeValue accept(Visitor* visitor) override {
+  typeRuntimeValue accept(ExprVisitor* visitor) override {
     return visitor->visitBinaryExpr(this);
   }
 };
 
 struct LiteralExpr : public Expr {
   const Token::typeLiteral value;
-  LiteralExpr(const Token::typeLiteral value) : value(value) {}
-  typeRuntimeValue accept(Visitor* visitor) override {
+  LiteralExpr(Token::typeLiteral value) : value(value) {}
+  typeRuntimeValue accept(ExprVisitor* visitor) override {
     return visitor->visitLiteralExpr(this);
   }
 };
@@ -107,7 +106,7 @@ struct LiteralExpr : public Expr {
 struct GroupingExpr : public Expr {
   const std::shared_ptr<Expr> expression;
   GroupingExpr(std::shared_ptr<Expr> expression) : expression(expression) {}
-  typeRuntimeValue accept(Visitor* visitor) override {
+  typeRuntimeValue accept(ExprVisitor* visitor) override {
     return visitor->visitGroupingExpr(this);
   }
 };
@@ -116,13 +115,13 @@ struct UnaryExpr : public Expr {
   const Token& op;
   const std::shared_ptr<Expr> right;
   UnaryExpr(const Token& op, std::shared_ptr<Expr> right) : op(op), right(right) {}
-  typeRuntimeValue accept(Visitor* visitor) override {
+  typeRuntimeValue accept(ExprVisitor* visitor) override {
     return visitor->visitUnaryExpr(this);
   }
 };
 
 // Common AST traverser.
-class AstPrinter : public Visitor {
+class ExprPrinter : public ExprVisitor {
   int indentCounter = 2;
   void formatOutputAST(const std::string& str) {
     auto curr = str.cbegin();
@@ -140,13 +139,13 @@ class AstPrinter : public Visitor {
   }
   template<typename... Ts>
   std::string parenthesize(const std::string& name, const Ts&... args) {
-    std::stringstream ss;
-    ss << '(' << name;
+    std::ostringstream oss;
+    oss << '(' << name;
     ([&](const auto& arg) -> void {
-      ss << ' ' << std::get<std::string>(arg->accept(this));
+      oss << ' ' << std::get<std::string>(arg->accept(this));
     }(args), ...);
-    ss << ')';
-    return ss.str();
+    oss << ')';
+    return oss.str();
   }
   typeRuntimeValue visitBinaryExpr(const BinaryExpr* expr) override {
     return parenthesize(expr->op.lexeme, expr->left, expr->right);

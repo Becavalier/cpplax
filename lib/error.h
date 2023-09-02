@@ -8,11 +8,11 @@
 
 struct RuntimeError : public std::exception {
   const Token& token;
-  const char* msg;
+  const std::string msg;
  public:
-  RuntimeError(const Token& token, const char* msg) : token(token), msg(msg) {}
-  const char* what(void) {
-    return msg;
+  RuntimeError(const Token& token, const std::string& msg) : token(token), msg(msg) {}
+  const char* what(void) const noexcept {
+    return msg.data();
   }
 };
 
@@ -23,20 +23,19 @@ struct Error {
     int line, 
     const std::string& where, 
     const std::string& msg) {
-    std::cout 
-      << "[Line " << line << "] Error " 
-      << where << ": " << msg 
-      << std::endl;
+    std::cerr << "[Line " << line << "] Error";
+    if (!where.empty()) std::cerr << ": " << where;
+    std::cerr << ": " << msg << std::endl;
     hadError = true;
   }
   static void error(const Token& token, const std::string& msg) {
-    report(token.line, token.type == TokenType::EOF ? "at end" : "at '" + token.lexeme + "'", msg);
+    report(token.line, token.type == TokenType::SOURCE_EOF ? "at end" : "at '" + token.lexeme + "'", msg);
   }
   static void error(int line, const std::string& msg) {
     report(line, "", msg);
   }
   static void runtimeError(RuntimeError& error) {
-    std::cerr << error.what() << "\n[line " << error.token.line << ']';
+    report(error.token.line, "", error.what());
     hadRuntimeError = true;
   }
 };

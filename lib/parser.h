@@ -6,12 +6,13 @@
 #include <string>
 #include "lib/token.h"
 #include "lib/expr.h"
+#include "lib/stmt.h"
 #include "lib/error.h"
+#include "lib/helper.h"
 
 class ParseError : public std::exception {};
 
 class Parser {
-  const std::vector<Token>& tokens;
   std::vector<Token>::const_iterator current;
   
   static auto error(const Token& token, const std::string& msg) {
@@ -25,7 +26,7 @@ class Parser {
     return *(current - 1);
   }
   auto isAtEnd(void) {
-    return current == tokens.cend();
+    return peek().type == TokenType::SOURCE_EOF;  // Stop when meeting EOF.
   }
   auto& advance(void) {
     if (!isAtEnd()) current++;
@@ -73,9 +74,85 @@ class Parser {
     if (check(type)) return advance();
     throw error(peek(), msg);
   }
+  std::shared_ptr<Stmt> varDeclaration(void) {
+    // varDecl → "var" IDENTIFIER ( "=" expression )? ";" ;
+    const Token& name = consume(TokenType::IDENTIFIER, "expect variable name.");
+    std::shared_ptr<Expr> initializer = nullptr;
+    if (match(TokenType::EQUAL)) {
+      initializer = expression();
+    }
+    consume(TokenType::SEMICOLON, "expect ';' after variable declaration.");
+    return std::make_shared<VarStmt>(name, initializer);
+  }
+  std::shared_ptr<Stmt> declaration(void) {
+    try {
+      if (match(TokenType::VAR)) return varDeclaration();
+      return statement();
+    } catch (ParseError error) {
+      synchronize();
+      return nullptr;
+    }
+  }
+  auto printStatement(void) {
+    // printStmt → "print" expression ";" ;
+    auto value = expression();
+    consume(TokenType::SEMICOLON, "expect ';' after value.");
+    return std::make_shared<PrintStmt>(value);
+  }
+  std::shared_ptr<Stmt> expressionStatement(void) {
+    // exprStmt → expression ";" ;
+    auto expr = expression();
+    consume(TokenType::SEMICOLON, "expect ';' after expression.");
+    return std::make_shared<ExpressionStmt>(expr);
+  }
+  auto block(void) {
+    // block → "{" declaration* "}" ;
+    std::vector<std::shared_ptr<Stmt>> declarations;
+    while (!check(TokenType::RIGHT_BRACE) && !isAtEnd()) {
+      declarations.push_back(declaration());
+    }
+    consume(TokenType::RIGHT_BRACE, "expect '}' after block.");
+    return declarations;
+  }
+  std::shared_ptr<Stmt> statement(void) {
+    // statement → exprStmt | printStmt ;
+    if (match(TokenType::PRINT)) return printStatement();
+    if (match(TokenType::LEFT_BRACE)) return std::make_shared<BlockStmt>(block());
+    /**
+     * If the next token doesn’t look like any known kind of statement, -
+     * we assume it must be an expression statement. That’s the typical -
+     * final fallthrough case when parsing a statement, since it’s hard -
+     * to proactively recognize an expression from its first token.
+    */
+    return expressionStatement();
+  }
+  std::shared_ptr<Expr> assignment(void) {
+    // assignment → IDENTIFIER "=" assignment 
+    //            | equality ;
+    /**
+     * (AssignExpr varA 
+     *   (AssignExpr varB 
+     *     (AssignExpr varC (equality))
+     *   )
+     * )
+     * 
+    */
+    auto expr = equality();  // Expr only.
+    if (match(TokenType::EQUAL)) {
+      const auto& equals = previous();
+      auto value = assignment();
+      // Only certain types of expression could be lvalue.
+      if (instanceof<VariableExpr>(expr.get())) {  
+        const auto& name = std::dynamic_pointer_cast<VariableExpr>(expr)->name;
+        return std::make_shared<AssignExpr>(name, value);
+      }
+      error(equals, "invalid assignment target.");
+    }
+    return expr;
+  }
   std::shared_ptr<Expr> expression(void) {
-    // expression → equality ;
-    return equality();
+    // expression → assignment ;
+    return assignment();
   }
   std::shared_ptr<Expr> equality(void) {
     // equality → comparison ( ( "!=" | "==" ) comparison )* ;
@@ -134,6 +211,9 @@ class Parser {
     if (match({ TokenType::NUMBER, TokenType::STRING, })) {
       return std::make_shared<LiteralExpr>(previous().literal);
     }
+    if (match(TokenType::IDENTIFIER)) {
+      return std::make_shared<VariableExpr>(previous());
+    }
     if (match(TokenType::LEFT_PAREN)) {
       auto expr = expression();
       consume(TokenType::RIGHT_PAREN, "expect ')' after expression.");  // Find the closing pair.
@@ -142,15 +222,16 @@ class Parser {
     throw error(peek(), "expect expression.");
   }
  public:
-  Parser(const std::vector<Token>& tokens) : tokens(tokens) {
+  Parser(const std::vector<Token>& tokens) {
     current = tokens.cbegin();
   }
-  std::shared_ptr<Expr> parse(void) {
-    try {
-      return expression();
-    } catch(ParseError error) {
-      return nullptr;
+  auto parse(void) {
+    // program → declaration* EOF ;
+    std::vector<std::shared_ptr<Stmt>> statements;
+    while (!isAtEnd()) {
+      statements.push_back(declaration());
     }
+    return statements;
   }
 };
 

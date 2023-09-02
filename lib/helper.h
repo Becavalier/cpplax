@@ -3,6 +3,7 @@
 
 #include <type_traits>
 #include <variant>
+#include <string>
 #include <sstream>
 
 template<typename T> struct is_variant : std::false_type {};
@@ -14,6 +15,11 @@ auto enumAsInteger(Enumeration const value) -> typename std::underlying_type<Enu
   return static_cast<typename std::underlying_type<Enumeration>::type>(value);
 }
 
+template<typename Base, typename T>
+inline bool instanceof(const T*) {
+  return std::is_base_of<Base, T>::value;
+}
+
 template<typename T>
 std::string stringifyVariantValue(const T& literal) {
   static_assert(is_variant_v<T>);
@@ -21,9 +27,7 @@ std::string stringifyVariantValue(const T& literal) {
   return std::visit([](auto&& arg) {
     using K = std::decay_t<decltype(arg)>;
     if constexpr (std::is_same_v<K, double>) {
-      std::ostringstream oss;
-      oss << std::noshowpoint << arg;
-      return oss.str();
+      return (std::ostringstream {} << std::noshowpoint << arg).str();
     } else if constexpr (std::is_same_v<K, bool>) {
       return std::string { arg ? "true" : "false" };
     } else if constexpr (std::is_same_v<K, std::string>) {
@@ -33,5 +37,7 @@ std::string stringifyVariantValue(const T& literal) {
     }
   }, literal);
 }
+
+std::string toRawString(const std::string&);
 
 #endif

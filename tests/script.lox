@@ -1,6 +1,5 @@
-(3 * 1 + (-2)) > 123;
-/* Here are some comments. */
-// var name = "Jason Yu";  // Name.
-// var age = 29.0;  // Age.
-
-
+var a = 1;
+{
+  var a = a + 2;
+  print a;
+}

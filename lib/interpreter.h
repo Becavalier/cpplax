@@ -2,12 +2,32 @@
 #define	_INTERPRETER_H
 
 #include <memory>
+#include <vector>
 #include "lib/expr.h"
 #include "lib/helper.h"
 #include "lib/error.h"
+#include "lib/stmt.h"
+#include "lib/helper.h"
+#include "lib/env.h"
 
 // The evaluation result should be Token::typeLiteral.
-class Interpreter : public Visitor {
+class Interpreter : public ExprVisitor, public StmtVisitor {
+  std::shared_ptr<Env> env = std::make_shared<Env>();  // Global scope.
+  struct BlockExecution {
+    Interpreter* thisPtr;
+    const std::vector<std::shared_ptr<Stmt>>& statements;
+    const std::shared_ptr<Env> previousEnv;
+    const std::shared_ptr<Env> env;
+    void execute(void) {
+      thisPtr->env = env;
+      for (auto& statement : statements) {
+        thisPtr->execute(statement);
+      }
+    }
+    ~BlockExecution() {
+      thisPtr->env = previousEnv;
+    }
+  };
   typeRuntimeValue evaluate(std::shared_ptr<Expr> expr) {
     return expr->accept(this);
   }
@@ -23,6 +43,9 @@ class Interpreter : public Visitor {
   void checkNumberOperands(const Token& op, const typeRuntimeValue& x, const typeRuntimeValue& y) const {
     if (std::holds_alternative<double>(x) && std::holds_alternative<double>(y)) return;
     throw RuntimeError { op, "operands must be numbers." };
+  }
+  void executeBlock(const std::vector<std::shared_ptr<Stmt>>& statements, std::shared_ptr<Env> env) {
+    BlockExecution { this, statements, this->env, env, }.execute();
   }
   typeRuntimeValue visitBinaryExpr(const BinaryExpr* expr) override {
     // Evaluate the operands in left-to-right order.
@@ -56,13 +79,23 @@ class Interpreter : public Visitor {
         return std::get<double>(left) - std::get<double>(right);
       }
       case TokenType::PLUS: {
-        if (std::holds_alternative<double>(left) && std::holds_alternative<double>(right)) {
-          return std::get<double>(left) + std::get<double>(right);
+        if (std::holds_alternative<double>(left)) {
+          if (std::holds_alternative<double>(right)) {
+            return std::get<double>(left) + std::get<double>(right);
+          }
+          if (std::holds_alternative<std::string>(right)) {
+            return (std::ostringstream {} << std::get<double>(left) << std::get<std::string>(right)).str();
+          }
         }
-        if (std::holds_alternative<std::string>(left) && std::holds_alternative<std::string>(right)) {
-          return std::get<std::string>(left) + std::get<std::string>(right);
+        if (std::holds_alternative<std::string>(left)) {
+          if (std::holds_alternative<double>(right)) {
+            return (std::ostringstream {} << std::get<std::string>(left) << std::get<double>(right)).str();
+          }
+          if (std::holds_alternative<std::string>(right)) {
+            return (std::ostringstream {} << std::get<std::string>(left) << std::get<std::string>(right)).str();
+          }
         }
-        throw RuntimeError { expr->op, "operands must be two numbers or two strings." };
+        throw RuntimeError { expr->op, "operand must be type of number or string." };
       }
       case TokenType::SLASH: {
         checkNumberOperands(expr->op, left, right);
@@ -98,11 +131,39 @@ class Interpreter : public Visitor {
     }
     return std::monostate {};
   }
+  typeRuntimeValue visitAssignExpr(const AssignExpr* expr) override {
+    auto value = evaluate(expr->value);
+    env->assign(expr->name, value);
+    return value;
+  }
+  typeRuntimeValue visitVariableExpr(const VariableExpr* expr) override {
+    return env->get(expr->name);
+  }
+  void visitExpressionStmt(const ExpressionStmt* stmt) override {
+    evaluate(stmt->expression);
+  }
+  void visitPrintStmt(const PrintStmt* stmt) override {
+    std::cout << toRawString(stringifyVariantValue(evaluate(stmt->expression)));
+  }
+  void visitVarStmt(const VarStmt* stmt) override {
+    typeRuntimeValue value;
+    if (stmt->initializer != nullptr) {
+      value = evaluate(stmt->initializer);
+    }
+    env->define(stmt->name.lexeme, value);
+  }
+  void visitBlockStmt(const BlockStmt* stmt) override {
+    executeBlock(stmt->statements, std::make_shared<Env>(env));
+  }
+  void execute(std::shared_ptr<Stmt> stmt) {
+    stmt->accept(this);
+  }
  public:
-  void interpret(std::shared_ptr<Expr> expr) {
+  void interpret(std::vector<std::shared_ptr<Stmt>> statements) {
     try {
-      typeRuntimeValue value = evaluate(expr);
-      std::cout << stringifyVariantValue(value) << std::endl;
+      for (auto& statement : statements) {
+        execute(statement);
+      }
     } catch (RuntimeError error) {
       Error::runtimeError(error);
     }

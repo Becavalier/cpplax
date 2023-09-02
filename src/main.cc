@@ -25,9 +25,9 @@ struct Lox {
     Parser parser { tokens };
     const auto ast = parser.parse();
 
-    AstPrinter astPrinter;
-    if (ast != nullptr) astPrinter.print(ast);
-    std::cout << '\n';
+    // ExprPrinter exprPrinter;
+    // if (ast != nullptr) exprPrinter.print(ast);
+    // std::cout << '\n';
 
     if (Error::hadError) return;  
 
@@ -39,9 +39,9 @@ struct Lox {
     std::ifstream file;
     file.open(path);
     if (file.good()) {
-      std::stringstream ss;
-      ss << file.rdbuf();
-      run(ss.str());
+      std::ostringstream oss;
+      oss << file.rdbuf();
+      run(oss.str());
       if (Error::hadError) std::exit(EX_DATAERR);
       if (Error::hadRuntimeError) std::exit(EX_SOFTWARE);
     }
@@ -49,7 +49,7 @@ struct Lox {
 
   static void runPrompt(void) {
     while (true) {
-      std::cout << "> ";
+      std::cout << "\n> ";
       std::string input;
       std::getline(std::cin, input);
       if (input.empty()) break;
@@ -63,7 +63,7 @@ Interpreter Lox::interpreter {};
 
 int main(int argc, char* argv[]) {
   if (argc > 2) {
-    std::cout << "Usage: jlox [script]" << std::endl;
+    std::cout << "Usage: cpplox [script]" << std::endl;
     std::exit(EX_USAGE);
   } else if (argc == 2) {
     Lox::runFile(argv[PATH_ARG_IDX]);

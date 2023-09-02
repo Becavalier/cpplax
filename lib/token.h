@@ -1,5 +1,5 @@
-#ifndef	_TOKEN_H
-#define	_TOKEN_H
+#ifndef _TOKEN_H
+#define _TOKEN_H
 
 #include <type_traits>
 #include <string>
@@ -9,72 +9,17 @@
 #include <iomanip>
 #include <iostream>
 #include "lib/helper.h"
-
-#undef EOF
-
-enum class TokenType : uint8_t {
-  // Single-character tokens.
-  LEFT_PAREN, 
-  RIGHT_PAREN, 
-  LEFT_BRACE, 
-  RIGHT_BRACE,
-  COMMA, 
-  DOT, 
-  MINUS, 
-  PLUS, 
-  SEMICOLON, 
-  SLASH, 
-  STAR,
-
-  // One or two character tokens.
-  BANG, 
-  BANG_EQUAL,
-  EQUAL, 
-  EQUAL_EQUAL,
-  GREATER, 
-  GREATER_EQUAL,
-  LESS, 
-  LESS_EQUAL,
-
-  // Literals.
-  IDENTIFIER, 
-  STRING, 
-  NUMBER,
-
-  // Keywords.
-  AND, 
-  CLASS, 
-  ELSE, 
-  FALSE, 
-  FUN, 
-  FOR, 
-  IF, 
-  NIL, 
-  OR,
-  PRINT, 
-  RETURN, 
-  SUPER, 
-  THIS, 
-  TRUE, 
-  VAR, 
-  WHILE, 
-  EOF
-};
+#include "lib/type.h"
 
 struct Token {
-  using typeLiteral = std::variant<
-    std::monostate, 
-    std::string, 
-    double, 
-    bool
-  >;
+  friend std::ostream &operator<<(std::ostream &os, const Token &token);
+  using typeLiteral = typeRuntimeValue;
   TokenType type;
   std::string lexeme;
   typeLiteral literal;
   int line;
-  friend std::ostream& operator<<(std::ostream& os, const Token& token);
-  Token(TokenType type, std::string lexeme, typeLiteral literal, int line) 
-    : type(type), lexeme(std::move(lexeme)), literal(literal), line(line) {}
+  Token(const TokenType& type, const std::string& lexeme, const typeLiteral& literal, int line) 
+    : type(type), lexeme(lexeme), literal(literal), line(line) {}
 };
 
 #endif
