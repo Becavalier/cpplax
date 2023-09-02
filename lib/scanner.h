@@ -11,7 +11,7 @@
 #include "lib/type.h"
 
 class Scanner {
-  int line = 0;
+  int line = 1;
   std::string source;
   std::vector<Token> tokens;
   std::string::const_iterator start;  // Points to the first char in the lexeme.

@@ -30,7 +30,7 @@ struct ExprVisitor {
   // virtual typeRuntimeValue visitGetExpr(const GetExpr* expr) = 0;
   virtual typeRuntimeValue visitGroupingExpr(const GroupingExpr*) = 0;
   virtual typeRuntimeValue visitLiteralExpr(const LiteralExpr*) = 0;
-  // virtual typeRuntimeValue visitLogicalExpr(const LogicalExpr* expr) = 0;
+  virtual typeRuntimeValue visitLogicalExpr(const LogicalExpr*) = 0;
   // virtual typeRuntimeValue visitSetExpr(const SetExpr* expr) = 0;
   // virtual typeRuntimeValue visitSuperExpr(const SuperExpr* expr) = 0;
   // virtual typeRuntimeValue visitThisExpr(const ThisExpr* expr) = 0;
@@ -60,9 +60,15 @@ struct AssignExpr : public Expr {
 
 // };
 
-// struct LogicalExpr : public Expr {
-
-// };
+struct LogicalExpr : public Expr {
+  const std::shared_ptr<Expr> left;
+  const Token& op;
+  const std::shared_ptr<Expr> right;
+  LogicalExpr(std::shared_ptr<Expr> left, const Token& op, std::shared_ptr<Expr> right) : left(left), op(op), right(right) {}
+  typeRuntimeValue accept(ExprVisitor* visitor) override {
+    return visitor->visitLogicalExpr(this);
+  }
+};
 
 // struct SetExpr : public Expr {
 

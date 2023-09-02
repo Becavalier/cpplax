@@ -93,6 +93,67 @@ class Parser {
       return nullptr;
     }
   }
+  auto ifStatement(void) {
+    consume(TokenType::LEFT_PAREN, "expect '(' after 'if'.");
+    auto condition = expression();
+    consume(TokenType::RIGHT_PAREN, "expect ')' after if condition.");
+    auto thenBranch = statement();   // Either one single statement or a block statement.
+    std::shared_ptr<Stmt> elseBranch = nullptr;
+    if (match(TokenType::ELSE)) {
+      elseBranch = statement();
+    }
+    return std::make_shared<IfStmt>(condition, thenBranch, elseBranch);
+  }
+  auto whileStatement(void) {
+    consume(TokenType::LEFT_PAREN, "expect '(' after 'while'.");
+    auto condition = expression();
+    consume(TokenType::RIGHT_PAREN, "expect ')' after while condition.");
+    auto body = statement(); 
+    return std::make_shared<WhileStmt>(condition, body);
+  }
+  auto forStatement(void) {
+    // forStmt → "for" "(" ( varDecl | exprStmt | ";" )
+    //           expression? ";"
+    //           expression? ")" statement ;
+    // Desugar to "while" loop.
+    consume(TokenType::LEFT_PAREN, "expect '(' after 'for'.");
+    std::shared_ptr<Stmt> initializer;
+    if (match(TokenType::SEMICOLON)) {
+      initializer = nullptr;
+    } else if (match(TokenType::VAR)) {
+      initializer = varDeclaration();
+    } else {
+      initializer = expressionStatement();
+    }
+    std::shared_ptr<Expr> condition = nullptr;
+    if (!check(TokenType::SEMICOLON)) {
+      condition = expression();
+    }
+    consume(TokenType::SEMICOLON, "expect ';' after loop condition.");
+    std::shared_ptr<Expr> increment = nullptr;
+    if (!check(TokenType::RIGHT_PAREN)) {
+      increment = expression();
+    }
+    consume(TokenType::RIGHT_PAREN, "expect ')' after for clauses.");
+    std::shared_ptr<Stmt> body = statement();
+    if (increment != nullptr) {
+      body = std::make_shared<BlockStmt>(
+        std::vector<std::shared_ptr<Stmt>> { 
+          body, std::make_shared<ExpressionStmt>(increment), 
+        }
+      );
+    }
+    if (condition == nullptr) condition = std::make_shared<LiteralExpr>(true);
+    body = std::make_shared<WhileStmt>(condition, body);
+    if (initializer != nullptr) {
+      body = std::make_shared<BlockStmt>(
+        std::vector<std::shared_ptr<Stmt>> { 
+          initializer, body, 
+        }
+      );
+    }
+    return body;
+  }
   auto printStatement(void) {
     // printStmt → "print" expression ";" ;
     auto value = expression();
@@ -116,7 +177,10 @@ class Parser {
   }
   std::shared_ptr<Stmt> statement(void) {
     // statement → exprStmt | printStmt ;
+    if (match(TokenType::FOR)) return forStatement();
+    if (match(TokenType::IF)) return ifStatement();
     if (match(TokenType::PRINT)) return printStatement();
+    if (match(TokenType::WHILE)) return whileStatement();
     if (match(TokenType::LEFT_BRACE)) return std::make_shared<BlockStmt>(block());
     /**
      * If the next token doesn’t look like any known kind of statement, -
@@ -126,9 +190,31 @@ class Parser {
     */
     return expressionStatement();
   }
+  std::shared_ptr<Expr> logicalOr(void) {
+    // Lower precedence.
+    // logic_or → logic_and ( "or" logic_and )* ;
+    auto expr = logicalAnd();
+    while (match(TokenType::OR)) {
+      const auto& op = previous();
+      auto right = logicalAnd();
+      expr = std::make_shared<LogicalExpr>(expr, op, right);
+    }
+    return expr;
+  }
+  std::shared_ptr<Expr> logicalAnd(void) {
+    // Higher precedence.
+    // logic_and → equality ( "and" equality )* ;
+    auto expr = equality();
+    while (match(TokenType::AND)) {
+      const auto& op = previous();
+      auto right = equality();
+      expr = std::make_shared<LogicalExpr>(expr, op, right);
+    }
+    return expr;
+  }
   std::shared_ptr<Expr> assignment(void) {
     // assignment → IDENTIFIER "=" assignment 
-    //            | equality ;
+    //            | logic_or ;
     /**
      * (AssignExpr varA 
      *   (AssignExpr varB 
@@ -137,13 +223,13 @@ class Parser {
      * )
      * 
     */
-    auto expr = equality();  // Expr only.
+    auto expr = logicalOr();
     if (match(TokenType::EQUAL)) {
       const auto& equals = previous();
       auto value = assignment();
-      // Only certain types of expression could be lvalue.
-      if (instanceof<VariableExpr>(expr.get())) {  
-        const auto& name = std::dynamic_pointer_cast<VariableExpr>(expr)->name;
+      // Only certain types of expression could be lvalues.
+      if (auto castPtr = std::dynamic_pointer_cast<VariableExpr>(expr)) {
+        const auto& name = castPtr->name;
         return std::make_shared<AssignExpr>(name, value);
       }
       error(equals, "invalid assignment target.");

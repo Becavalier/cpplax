@@ -5,6 +5,8 @@
 #include <variant>
 #include <string>
 #include <sstream>
+#include <cmath>
+#include <limits>
 
 template<typename T> struct is_variant : std::false_type {};
 template<typename ...Args> struct is_variant<std::variant<Args...>> : std::true_type {};
@@ -13,11 +15,6 @@ template<typename T> inline constexpr bool is_variant_v = is_variant<T>::value;
 template <typename Enumeration>
 auto enumAsInteger(Enumeration const value) -> typename std::underlying_type<Enumeration>::type {
   return static_cast<typename std::underlying_type<Enumeration>::type>(value);
-}
-
-template<typename Base, typename T>
-inline bool instanceof(const T*) {
-  return std::is_base_of<Base, T>::value;
 }
 
 template<typename T>
@@ -39,5 +36,9 @@ std::string stringifyVariantValue(const T& literal) {
 }
 
 std::string toRawString(const std::string&);
+inline bool isDoubleEqual(double x, double y) {
+  const auto epsilon = std::numeric_limits<double>::epsilon();
+  return std::abs(x - y) <= epsilon * std::abs(x);
+}
 
 #endif

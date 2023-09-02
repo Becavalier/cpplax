@@ -34,6 +34,8 @@ class Interpreter : public ExprVisitor, public StmtVisitor {
   auto isTruthy(typeRuntimeValue obj) const {
     if (std::holds_alternative<std::monostate>(obj)) return false;
     if (std::holds_alternative<bool>(obj)) return std::get<bool>(obj);
+    if (std::holds_alternative<std::string>(obj)) return std::get<std::string>(obj).size() > 0;
+    if (std::holds_alternative<double>(obj)) return !isDoubleEqual(std::get<double>(obj), 0);
     return true;
   }
   void checkNumberOperand(const Token& op, const typeRuntimeValue& operand) const {
@@ -139,6 +141,15 @@ class Interpreter : public ExprVisitor, public StmtVisitor {
   typeRuntimeValue visitVariableExpr(const VariableExpr* expr) override {
     return env->get(expr->name);
   }
+  typeRuntimeValue visitLogicalExpr(const LogicalExpr* expr) override {
+    auto left = evaluate(expr->left);
+    if (expr->op.type == TokenType::OR) {
+      if (isTruthy(left)) return left;
+    } else {
+      if (!isTruthy(left)) return left;
+    }
+    return evaluate(expr->right);
+  }
   void visitExpressionStmt(const ExpressionStmt* stmt) override {
     evaluate(stmt->expression);
   }
@@ -154,6 +165,18 @@ class Interpreter : public ExprVisitor, public StmtVisitor {
   }
   void visitBlockStmt(const BlockStmt* stmt) override {
     executeBlock(stmt->statements, std::make_shared<Env>(env));
+  }
+  void visitIfStmt(const IfStmt* stmt) override {
+    if (isTruthy(evaluate(stmt->condition))) {
+      execute(stmt->thenBranch);
+    } else if (stmt->thenBranch != nullptr) {
+      execute(stmt->elseBranch);
+    }
+  }
+  void visitWhileStmt(const WhileStmt* stmt) override {
+    while (isTruthy(evaluate(stmt->condition))) {
+      execute(stmt->body);
+    }
   }
   void execute(std::shared_ptr<Stmt> stmt) {
     stmt->accept(this);

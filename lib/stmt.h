@@ -10,12 +10,16 @@ struct ExpressionStmt;
 struct PrintStmt;
 struct VarStmt;
 struct BlockStmt;
+struct IfStmt;
+struct WhileStmt;
 
 struct StmtVisitor {
   virtual void visitExpressionStmt(const ExpressionStmt*) = 0;
   virtual void visitPrintStmt(const PrintStmt*) = 0;
   virtual void visitVarStmt(const VarStmt*) = 0;
   virtual void visitBlockStmt(const BlockStmt*) = 0;
+  virtual void visitIfStmt(const IfStmt*) = 0;
+  virtual void visitWhileStmt(const WhileStmt*) = 0;
 };
 
 
@@ -50,10 +54,29 @@ struct VarStmt : public Stmt {
 };
 
 struct BlockStmt : public Stmt {
-  std::vector<std::shared_ptr<Stmt>> statements;
-  BlockStmt(std::vector<std::shared_ptr<Stmt>> statements) : statements(statements) {}
+  const std::vector<std::shared_ptr<Stmt>> statements;
+  BlockStmt(const std::vector<std::shared_ptr<Stmt>>& statements) : statements(statements) {}
   void accept(StmtVisitor* visitor) override {
     visitor->visitBlockStmt(this);
+  }
+};
+
+struct IfStmt : public Stmt {
+  std::shared_ptr<Expr> condition;
+  std::shared_ptr<Stmt> thenBranch;
+  std::shared_ptr<Stmt> elseBranch;
+  IfStmt(std::shared_ptr<Expr> condition, std::shared_ptr<Stmt> thenBranch, std::shared_ptr<Stmt> elseBranch) : condition(condition), thenBranch(thenBranch), elseBranch(elseBranch) {}
+  void accept(StmtVisitor* visitor) override {
+    visitor->visitIfStmt(this);
+  }
+};
+
+struct WhileStmt : public Stmt {
+  std::shared_ptr<Expr> condition;
+  std::shared_ptr<Stmt> body;
+  WhileStmt(std::shared_ptr<Expr> condition, std::shared_ptr<Stmt> body) : condition(condition), body(body) {}
+  void accept(StmtVisitor* visitor) override {
+    visitor->visitWhileStmt(this);
   }
 };
 
