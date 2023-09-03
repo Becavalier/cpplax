@@ -4,6 +4,7 @@
 #include <vector>
 #include <memory>
 #include <string>
+#include <functional>
 #include "lib/token.h"
 #include "lib/expr.h"
 #include "lib/stmt.h"
@@ -41,7 +42,7 @@ class Parser {
       if (previous().type == TokenType::SEMICOLON) return;
       switch (peek().type) {  // Check if it's the statement boundary.
         case TokenType::CLASS:
-        case TokenType::FUN:
+        case TokenType::FN:
         case TokenType::VAR:
         case TokenType::FOR:
         case TokenType::IF:
@@ -74,18 +75,36 @@ class Parser {
     if (check(type)) return advance();
     throw error(peek(), msg);
   }
-  std::shared_ptr<Stmt> varDeclaration(void) {
+  Stmt::sharedStmtPtr varDeclaration(void) {
     // varDecl → "var" IDENTIFIER ( "=" expression )? ";" ;
     const Token& name = consume(TokenType::IDENTIFIER, "expect variable name.");
-    std::shared_ptr<Expr> initializer = nullptr;
+    Expr::sharedExprPtr initializer = nullptr;
     if (match(TokenType::EQUAL)) {
       initializer = expression();
     }
     consume(TokenType::SEMICOLON, "expect ';' after variable declaration.");
     return std::make_shared<VarStmt>(name, initializer);
   }
-  std::shared_ptr<Stmt> declaration(void) {
+  std::shared_ptr<FunctionStmt> function(const std::string& kind) {
+    const auto& name = consume(TokenType::IDENTIFIER, "expect " + kind + " name.");
+    consume(TokenType::LEFT_PAREN, "expect '(' after " + kind + " name.");
+    std::vector<std::reference_wrapper<const Token>> parameters;
+    if (!check(TokenType::RIGHT_PAREN)) {
+      do {
+        if (parameters.size() >= 255) {
+          error(peek(), "can't have more than 255 parameters.");
+        }
+        parameters.push_back(consume(TokenType::IDENTIFIER, "expect parameter name."));
+      } while (match(TokenType::COMMA));
+    }
+    consume(TokenType::RIGHT_PAREN, "expect ')' after parameters.");
+    consume(TokenType::LEFT_BRACE, "expect '{' before " + kind + " body.");
+    std::vector<Stmt::sharedStmtPtr> body = block();
+    return std::make_shared<FunctionStmt>(name, parameters, body);
+  }
+  Stmt::sharedStmtPtr declaration(void) {
     try {
+      if (match(TokenType::FN)) return function("function");
       if (match(TokenType::VAR)) return varDeclaration();
       return statement();
     } catch (ParseError error) {
@@ -98,7 +117,7 @@ class Parser {
     auto condition = expression();
     consume(TokenType::RIGHT_PAREN, "expect ')' after if condition.");
     auto thenBranch = statement();   // Either one single statement or a block statement.
-    std::shared_ptr<Stmt> elseBranch = nullptr;
+    Stmt::sharedStmtPtr elseBranch = nullptr;
     if (match(TokenType::ELSE)) {
       elseBranch = statement();
     }
@@ -117,7 +136,7 @@ class Parser {
     //           expression? ")" statement ;
     // Desugar to "while" loop.
     consume(TokenType::LEFT_PAREN, "expect '(' after 'for'.");
-    std::shared_ptr<Stmt> initializer;
+    Stmt::sharedStmtPtr initializer;
     if (match(TokenType::SEMICOLON)) {
       initializer = nullptr;
     } else if (match(TokenType::VAR)) {
@@ -125,30 +144,30 @@ class Parser {
     } else {
       initializer = expressionStatement();
     }
-    std::shared_ptr<Expr> condition = nullptr;
+    Expr::sharedExprPtr condition = nullptr;
     if (!check(TokenType::SEMICOLON)) {
       condition = expression();
     }
     consume(TokenType::SEMICOLON, "expect ';' after loop condition.");
-    std::shared_ptr<Expr> increment = nullptr;
+    Expr::sharedExprPtr increment = nullptr;
     if (!check(TokenType::RIGHT_PAREN)) {
       increment = expression();
     }
     consume(TokenType::RIGHT_PAREN, "expect ')' after for clauses.");
-    std::shared_ptr<Stmt> body = statement();
+    Stmt::sharedStmtPtr body = statement();
     if (increment != nullptr) {
       body = std::make_shared<BlockStmt>(
-        std::vector<std::shared_ptr<Stmt>> { 
-          body, std::make_shared<ExpressionStmt>(increment), 
+        std::vector<Stmt::sharedStmtPtr> { 
+          body, std::make_shared<ExpressionStmt>(increment),  // Append the increment to the iteration body.
         }
       );
     }
-    if (condition == nullptr) condition = std::make_shared<LiteralExpr>(true);
+    if (condition == nullptr) condition = std::make_shared<LiteralExpr>(true);  // Dead loop if no condition set.
     body = std::make_shared<WhileStmt>(condition, body);
     if (initializer != nullptr) {
       body = std::make_shared<BlockStmt>(
-        std::vector<std::shared_ptr<Stmt>> { 
-          initializer, body, 
+        std::vector<Stmt::sharedStmtPtr> { 
+          initializer, body,  // Prepend the initializer above the while loop.
         }
       );
     }
@@ -160,22 +179,22 @@ class Parser {
     consume(TokenType::SEMICOLON, "expect ';' after value.");
     return std::make_shared<PrintStmt>(value);
   }
-  std::shared_ptr<Stmt> expressionStatement(void) {
+  Stmt::sharedStmtPtr expressionStatement(void) {
     // exprStmt → expression ";" ;
     auto expr = expression();
     consume(TokenType::SEMICOLON, "expect ';' after expression.");
     return std::make_shared<ExpressionStmt>(expr);
   }
-  auto block(void) {
+  std::vector<Stmt::sharedStmtPtr> block(void) {
     // block → "{" declaration* "}" ;
-    std::vector<std::shared_ptr<Stmt>> declarations;
+    std::vector<Stmt::sharedStmtPtr> declarations;
     while (!check(TokenType::RIGHT_BRACE) && !isAtEnd()) {
       declarations.push_back(declaration());
     }
     consume(TokenType::RIGHT_BRACE, "expect '}' after block.");
     return declarations;
   }
-  std::shared_ptr<Stmt> statement(void) {
+  Stmt::sharedStmtPtr statement(void) {
     // statement → exprStmt | printStmt ;
     if (match(TokenType::FOR)) return forStatement();
     if (match(TokenType::IF)) return ifStatement();
@@ -190,7 +209,7 @@ class Parser {
     */
     return expressionStatement();
   }
-  std::shared_ptr<Expr> logicalOr(void) {
+  Expr::sharedExprPtr logicalOr(void) {
     // Lower precedence.
     // logic_or → logic_and ( "or" logic_and )* ;
     auto expr = logicalAnd();
@@ -201,8 +220,8 @@ class Parser {
     }
     return expr;
   }
-  std::shared_ptr<Expr> logicalAnd(void) {
-    // Higher precedence.
+  Expr::sharedExprPtr logicalAnd(void) {
+    // With higher precedence.
     // logic_and → equality ( "and" equality )* ;
     auto expr = equality();
     while (match(TokenType::AND)) {
@@ -212,7 +231,22 @@ class Parser {
     }
     return expr;
   }
-  std::shared_ptr<Expr> assignment(void) {
+  Expr::sharedExprPtr finishCall(Expr::sharedExprPtr callee) {
+    // Pasre the callee with its arguments.
+    // arguments → expression ( "," expression )* ;
+    std::vector<Expr::sharedExprPtr> arguments;
+    if (!check(TokenType::RIGHT_PAREN)) {
+      do {
+        if (arguments.size() >= 255) {
+          error(peek(), "can't have more than 255 arguments.");
+        }
+        arguments.push_back(expression());
+      } while (match(TokenType::COMMA));
+    }
+    auto paren = consume(TokenType::RIGHT_PAREN, "expect ')' after arguments.");
+    return std::make_shared<CallExpr>(callee, paren, arguments);
+  }
+  Expr::sharedExprPtr assignment(void) {
     // assignment → IDENTIFIER "=" assignment 
     //            | logic_or ;
     /**
@@ -236,11 +270,11 @@ class Parser {
     }
     return expr;
   }
-  std::shared_ptr<Expr> expression(void) {
+  Expr::sharedExprPtr expression(void) {
     // expression → assignment ;
     return assignment();
   }
-  std::shared_ptr<Expr> equality(void) {
+  Expr::sharedExprPtr equality(void) {
     // equality → comparison ( ( "!=" | "==" ) comparison )* ;
     auto expr = comparison();
     while (match({ TokenType::BANG_EQUAL, TokenType::EQUAL_EQUAL, })) {
@@ -250,7 +284,7 @@ class Parser {
     }
     return expr;
   }
-  std::shared_ptr<Expr> comparison(void) {
+  Expr::sharedExprPtr comparison(void) {
     // comparison → term ( ( ">" | ">=" | "<" | "<=" ) term )* ;
     auto expr = term();
     while (match({ TokenType::GREATER, TokenType::GREATER_EQUAL, TokenType::LESS, TokenType::LESS_EQUAL, })) {
@@ -260,7 +294,7 @@ class Parser {
     }
     return expr;
   }
-  std::shared_ptr<Expr> term(void) {
+  Expr::sharedExprPtr term(void) {
     // term → factor ( ( "-" | "+" ) factor )* ;
     auto expr = factor();
     while (match({ TokenType::MINUS, TokenType::PLUS, })) {
@@ -270,7 +304,7 @@ class Parser {
     }
     return expr;
   }
-  std::shared_ptr<Expr> factor(void) {
+  Expr::sharedExprPtr factor(void) {
     // factor → unary ( ( "/" | "*" ) unary )* ;
     auto expr = unary();
     while (match({ TokenType::SLASH, TokenType::STAR, })) {
@@ -280,16 +314,28 @@ class Parser {
     }
     return expr;
   }
-  std::shared_ptr<Expr> unary(void) {
-    // unary → ( "!" | "-" ) unary | primary ;
+  Expr::sharedExprPtr unary(void) {
+    // unary → ( "!" | "-" ) unary | call ;
     if (match({ TokenType::BANG, TokenType::MINUS, })) {
       const auto& op = previous();
       auto right = unary();
       return std::make_shared<UnaryExpr>(op, right);
     }
-    return primary();
+    return call();
   }
-  std::shared_ptr<Expr> primary(void) {
+  Expr::sharedExprPtr call(void) {
+    // call → primary ( "(" arguments? ")" )* ;
+    auto expr = primary();
+    while (true) {
+      if (match(TokenType::LEFT_PAREN)) {
+        expr = finishCall(expr);
+      } else {
+        break;
+      }
+    }
+    return expr;
+  }
+  Expr::sharedExprPtr primary(void) {
     // primary → NUMBER | STRING | "true" | "false" | "nil" | "(" expression ")" ;
     if (match(TokenType::FALSE)) return std::make_shared<LiteralExpr>(false);
     if (match(TokenType::TRUE)) return std::make_shared<LiteralExpr>(true);
@@ -313,7 +359,7 @@ class Parser {
   }
   auto parse(void) {
     // program → declaration* EOF ;
-    std::vector<std::shared_ptr<Stmt>> statements;
+    std::vector<Stmt::sharedStmtPtr> statements;
     while (!isAtEnd()) {
       statements.push_back(declaration());
     }

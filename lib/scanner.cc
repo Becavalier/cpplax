@@ -6,7 +6,7 @@ const typeKeywordList Scanner::keywords =  {
   { "else", TokenType::ELSE },
   { "false", TokenType::FALSE },
   { "for", TokenType::FOR },
-  { "fun", TokenType::FUN },
+  { "fn", TokenType::FN },
   { "if", TokenType::IF },
   { "nil", TokenType::NIL },
   { "or", TokenType::OR },

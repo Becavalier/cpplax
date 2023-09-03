@@ -7,6 +7,7 @@
 #include <sstream>
 #include <cmath>
 #include <limits>
+#include <memory>
 
 template<typename T> struct is_variant : std::false_type {};
 template<typename ...Args> struct is_variant<std::variant<Args...>> : std::true_type {};
@@ -29,8 +30,10 @@ std::string stringifyVariantValue(const T& literal) {
       return std::string { arg ? "true" : "false" };
     } else if constexpr (std::is_same_v<K, std::string>) {
       return arg;
-    } else {
+    } else if constexpr (std::is_same_v<K, std::monostate>) {
       return std::string { "nil" };
+    } else {
+      return std::string { "<rt-value>" };
     }
   }, literal);
 }

@@ -3,6 +3,7 @@
 
 #include <variant>
 #include <string>
+#include <memory>
 #include <unordered_map>
 
 enum class TokenType : uint8_t {
@@ -39,7 +40,7 @@ enum class TokenType : uint8_t {
   CLASS, 
   ELSE, 
   FALSE, 
-  FUN, 
+  FN, 
   FOR, 
   IF, 
   NIL, 
@@ -54,7 +55,9 @@ enum class TokenType : uint8_t {
   SOURCE_EOF
 };
 
+struct Invokable;
 using typeRuntimeValue = std::variant<
+  std::shared_ptr<Invokable>,
   std::monostate, 
   std::string, 
   double, 
