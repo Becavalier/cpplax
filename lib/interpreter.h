@@ -12,7 +12,9 @@
 #include "lib/helper.h"
 #include "lib/env.h"
 
+// Forward declaration.
 struct Interpreter;
+
 // This is an "invokable" class for function and method.
 struct Invokable {  
   virtual size_t arity() = 0;
@@ -20,7 +22,12 @@ struct Invokable {
   virtual ~Invokable() {}
 };
 
-struct Interpreter : public ExprVisitor, public StmtVisitor, public std::enable_shared_from_this<Interpreter> {
+struct ReturnException : public std::exception {
+  const typeRuntimeValue value;
+  ReturnException(const typeRuntimeValue& value) : value(value) {}
+};
+
+struct Interpreter : public ExprVisitor, public StmtVisitor {
   const std::shared_ptr<Env> globals = std::make_shared<Env>();
   std::shared_ptr<Env> env = globals;  // Global scope.
   struct BlockExecution {
@@ -53,7 +60,7 @@ struct Interpreter : public ExprVisitor, public StmtVisitor, public std::enable_
     globals->define("clock", std::make_shared<decltype(clockDef)>(clockDef));
   }
   typeRuntimeValue evaluate(std::shared_ptr<Expr> expr) {
-    return expr->accept(shared_from_this());
+    return expr->accept(this);
   }
   auto isTruthy(typeRuntimeValue obj) const {
     if (std::holds_alternative<std::monostate>(obj)) return false;
@@ -180,7 +187,10 @@ struct Interpreter : public ExprVisitor, public StmtVisitor, public std::enable_
     const auto function = std::static_pointer_cast<Invokable>(std::get<std::shared_ptr<Invokable>>(callee));
     // Check if it matches the calling arity.
     if (arguments.size() != function->arity()) {
-      throw RuntimeError { expr->paren, "expected " + std::to_string(function->arity()) + " arguments but got " + std::to_string( arguments.size()) + "." };
+      throw RuntimeError { 
+        expr->paren, 
+        "expected " + std::to_string(function->arity()) + " arguments but got " + std::to_string( arguments.size()) + "." 
+      };
     }
     return function->invoke(this, arguments);
   }
@@ -203,7 +213,7 @@ struct Interpreter : public ExprVisitor, public StmtVisitor, public std::enable_
   void visitIfStmt(std::shared_ptr<const IfStmt> stmt) override {
     if (isTruthy(evaluate(stmt->condition))) {
       execute(stmt->thenBranch);
-    } else if (stmt->thenBranch != nullptr) {
+    } else if (stmt->elseBranch != nullptr) {
       execute(stmt->elseBranch);
     }
   }
@@ -213,11 +223,17 @@ struct Interpreter : public ExprVisitor, public StmtVisitor, public std::enable_
     }
   }
   void visitFunctionStmt(std::shared_ptr<const FunctionStmt> stmt) override;
+  void visitReturnStmt(std::shared_ptr<const ReturnStmt> stmt) override {
+    // Unwind the call stack by exception.
+    typeRuntimeValue value = std::monostate {};
+    if (stmt->value != nullptr) value = evaluate(stmt->value);
+    throw ReturnException { value };
+  }
   void executeBlock(const std::vector<std::shared_ptr<Stmt>>& statements, std::shared_ptr<Env> env) {
     BlockExecution { this, statements, this->env, env, }.execute();
   }
   void execute(std::shared_ptr<Stmt> stmt) {
-    stmt->accept(shared_from_this());
+    stmt->accept(this);
   }
   void interpret(std::vector<std::shared_ptr<Stmt>> statements) {
     try {
@@ -239,14 +255,24 @@ struct Function : public Invokable {
     // Each function gets its own environment where it stores those variables.
     auto env = std::make_shared<Env>(interpreter->globals);
     for (auto i = 0; i < declaration->parames.size(); i++) {
-      env->define(declaration->parames.at(i).get().lexeme, arguments.at(i));  // Save passing arguments into the env.
+      // Save the passing arguments into the env.
+      env->define(declaration->parames.at(i).get().lexeme, arguments.at(i));  
     }
-    interpreter->executeBlock(declaration->body, env);
+    try {
+      interpreter->executeBlock(declaration->body, env);
+    } catch (const ReturnException& ret) {
+      return ret.value;
+    }
     return std::monostate {};
   };
  private:
   const std::shared_ptr<const FunctionStmt> declaration;
 };
 
+// This function depends on the full definition of "Function" class.
+void Interpreter::visitFunctionStmt(std::shared_ptr<const FunctionStmt> stmt) {
+  std::shared_ptr<Invokable> invoker = std::make_shared<Function>(stmt);  // Up-casting.
+  env->define(stmt->name.lexeme, invoker);
+}
 
 #endif

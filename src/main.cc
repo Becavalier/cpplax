@@ -15,7 +15,7 @@
 #define PATH_ARG_IDX 1
 
 struct Lox {
-  static std::shared_ptr<Interpreter> interpreter;
+  static Interpreter interpreter;
   static void run(const std::string& code) {
     // Scanning (lexing).
     Scanner scanner { code };
@@ -32,7 +32,7 @@ struct Lox {
     if (Error::hadError) return;  
 
     // Interpret.
-    interpreter->interpret(ast);
+    interpreter.interpret(ast);
   }
 
   static void runFile(const char* path) {
@@ -59,7 +59,7 @@ struct Lox {
   }
 };
 
-auto Lox::interpreter = std::make_shared<Interpreter>();
+Interpreter Lox::interpreter {};
 
 int main(int argc, char* argv[]) {
   if (argc > 2) {

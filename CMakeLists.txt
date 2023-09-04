@@ -3,24 +3,19 @@ cmake_minimum_required (VERSION 3.11)
 set (CMAKE_C_COMPILER /usr/bin/clang)
 set (CMAKE_CXX_COMPILER /usr/bin/clang++)
 
-project (os-paw)
+project (cpplax)
 
 include_directories(.)
 
 # Setup C++ configure.
 set (CMAKE_VERBOSE_MAKEFILE "OFF")
 set (CMAKE_CXX_STANDARD 20)
-set (CMAKE_CXX_FLAGS_DEBUG "$ENV{CXXFLAGS} \
+set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} \
   -v          \
-  -O0         \
+  -O3         \
   -Wall       \
   -g          \
   -ggdb")
-set (CMAKE_CXX_FLAGS_RELEASE "$ENV{CXXFLAGS} \
-  -v          \
-  -Ofast      \
-  -DNDEBUG    \
-  -Wall")
 
 set (OUTPUT "cpplox")
 set (N_OUTPUT_SRC "bin")

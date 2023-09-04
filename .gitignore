@@ -6,3 +6,4 @@ Makefile
 *.dSYM/
 *.a
 /build*
+bin/

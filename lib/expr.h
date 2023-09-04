@@ -41,29 +41,25 @@ struct ExprVisitor {
 
 struct Expr {
   using sharedExprPtr = std::shared_ptr<Expr>;
-  virtual typeRuntimeValue accept(std::shared_ptr<ExprVisitor>) = 0;
+  virtual typeRuntimeValue accept(ExprVisitor*) = 0;
   virtual ~Expr() {};
 };
 
-struct AssignExpr : 
-  public Expr, 
-  public std::enable_shared_from_this<AssignExpr> {
+struct AssignExpr : public Expr, public std::enable_shared_from_this<AssignExpr> {
   const Token& name;  // The variable being assigned to, rather than an "Expr".
   const sharedExprPtr value;
   AssignExpr(const Token& name, sharedExprPtr value) : name(name), value(value) {}
-  typeRuntimeValue accept(std::shared_ptr<ExprVisitor> visitor) override {
+  typeRuntimeValue accept(ExprVisitor* visitor) override {
     return visitor->visitAssignExpr(shared_from_this());
   }
 };
 
-struct CallExpr : 
-  public Expr, 
-  public std::enable_shared_from_this<CallExpr> {
+struct CallExpr : public Expr, public std::enable_shared_from_this<CallExpr> {
   const sharedExprPtr callee;  // Could be a "CallExpr" as well.
   const Token& paren;  // Record the location of the closing parenthesis.
   const std::vector<sharedExprPtr> arguments;
   CallExpr(sharedExprPtr callee, const Token& paren, const std::vector<sharedExprPtr>& arguments) : callee(callee), paren(paren), arguments(arguments) {}
-  typeRuntimeValue accept(std::shared_ptr<ExprVisitor> visitor) override {
+  typeRuntimeValue accept(ExprVisitor* visitor) override {
     return visitor->visitCallExpr(shared_from_this());
   }
 };
@@ -79,7 +75,7 @@ struct LogicalExpr :
   const Token& op;
   const sharedExprPtr right;
   LogicalExpr(sharedExprPtr left, const Token& op, sharedExprPtr right) : left(left), op(op), right(right) {}
-  typeRuntimeValue accept(std::shared_ptr<ExprVisitor> visitor) override {
+  typeRuntimeValue accept(ExprVisitor* visitor) override {
     return visitor->visitLogicalExpr(shared_from_this());
   }
 };
@@ -96,64 +92,52 @@ struct LogicalExpr :
 
 // };
 
-struct VariableExpr : 
-  public Expr, 
-  public std::enable_shared_from_this<VariableExpr> {
+struct VariableExpr : public Expr, public std::enable_shared_from_this<VariableExpr> {
   const Token& name;
   VariableExpr(const Token& name) : name(name) {}
-  typeRuntimeValue accept(std::shared_ptr<ExprVisitor> visitor) override {
+  typeRuntimeValue accept(ExprVisitor* visitor) override {
     return visitor->visitVariableExpr(shared_from_this());
   }
 };
 
-struct BinaryExpr : 
-  public Expr, 
-  public std::enable_shared_from_this<BinaryExpr> {
+struct BinaryExpr : public Expr, public std::enable_shared_from_this<BinaryExpr> {
   const Token& op;
   const sharedExprPtr left;
   const sharedExprPtr right;
   BinaryExpr(sharedExprPtr left, const Token& op, sharedExprPtr right) 
     : op(op), left(left), right(right) {}
-  typeRuntimeValue accept(std::shared_ptr<ExprVisitor> visitor) override {
+  typeRuntimeValue accept(ExprVisitor* visitor) override {
     return visitor->visitBinaryExpr(shared_from_this());
   }
 };
 
-struct LiteralExpr : 
-  public Expr, 
-  public std::enable_shared_from_this<LiteralExpr> {
+struct LiteralExpr :  public Expr, public std::enable_shared_from_this<LiteralExpr> {
   const Token::typeLiteral value;
   LiteralExpr(Token::typeLiteral value) : value(value) {}
-  typeRuntimeValue accept(std::shared_ptr<ExprVisitor> visitor) override {
+  typeRuntimeValue accept(ExprVisitor* visitor) override {
     return visitor->visitLiteralExpr(shared_from_this());
   }
 };
 
-struct GroupingExpr :
-  public Expr, 
-  public std::enable_shared_from_this<GroupingExpr> {
+struct GroupingExpr : public Expr, public std::enable_shared_from_this<GroupingExpr> {
   const sharedExprPtr expression;
   GroupingExpr(sharedExprPtr expression) : expression(expression) {}
-  typeRuntimeValue accept(std::shared_ptr<ExprVisitor> visitor) override {
+  typeRuntimeValue accept(ExprVisitor* visitor) override {
     return visitor->visitGroupingExpr(shared_from_this());
   }
 };
 
-struct UnaryExpr : 
-  public Expr, 
-  public std::enable_shared_from_this<UnaryExpr> {
+struct UnaryExpr : public Expr, public std::enable_shared_from_this<UnaryExpr> {
   const Token& op;
   const sharedExprPtr right;
   UnaryExpr(const Token& op, sharedExprPtr right) : op(op), right(right) {}
-  typeRuntimeValue accept(std::shared_ptr<ExprVisitor> visitor) override {
+  typeRuntimeValue accept(ExprVisitor* visitor) override {
     return visitor->visitUnaryExpr(shared_from_this());
   }
 };
 
 // Common AST traverser.
-class ExprPrinter : 
-  public ExprVisitor, 
-  public std::enable_shared_from_this<ExprPrinter> {
+class ExprPrinter : public ExprVisitor, public std::enable_shared_from_this<ExprPrinter> {
   int indentCounter = 2;
   void formatOutputAST(const std::string& str) {
     auto curr = str.cbegin();
@@ -174,7 +158,7 @@ class ExprPrinter :
     std::ostringstream oss;
     oss << '(' << name;
     ([&](const auto& arg) -> void {
-      oss << ' ' << std::get<std::string>(arg->accept(shared_from_this()));
+      oss << ' ' << std::get<std::string>(arg->accept(this));
     }(args), ...);
     oss << ')';
     return oss.str();
@@ -193,7 +177,7 @@ class ExprPrinter :
   }
  public:
   void print(Expr::sharedExprPtr expr) {
-    const auto str = std::get<std::string>(expr->accept(shared_from_this()));
+    const auto str = std::get<std::string>(expr->accept(this));
     formatOutputAST(str);
   }
 };

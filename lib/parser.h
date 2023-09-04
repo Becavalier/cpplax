@@ -179,6 +179,16 @@ class Parser {
     consume(TokenType::SEMICOLON, "expect ';' after value.");
     return std::make_shared<PrintStmt>(value);
   }
+  auto returnStatement(void) {
+    // returnStmt → "return" expression? ";" ;
+    auto keyword = previous();
+    Expr::sharedExprPtr value = nullptr;
+    if (!check(TokenType::SEMICOLON)) {
+      value = expression();
+    }
+    consume(TokenType::SEMICOLON, "expect ';' after return value.");
+    return std::make_shared<ReturnStmt>(keyword, value);
+  }
   Stmt::sharedStmtPtr expressionStatement(void) {
     // exprStmt → expression ";" ;
     auto expr = expression();
@@ -199,6 +209,7 @@ class Parser {
     if (match(TokenType::FOR)) return forStatement();
     if (match(TokenType::IF)) return ifStatement();
     if (match(TokenType::PRINT)) return printStatement();
+    if (match(TokenType::RETURN)) return returnStatement();
     if (match(TokenType::WHILE)) return whileStatement();
     if (match(TokenType::LEFT_BRACE)) return std::make_shared<BlockStmt>(block());
     /**
