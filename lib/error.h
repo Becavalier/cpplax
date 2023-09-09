@@ -4,7 +4,7 @@
 #include <string>
 #include <iostream>
 #include <utility>
-#include "lib/token.h"
+#include "./token.h"
 
 struct RuntimeError : public std::exception {
   const Token& token;
@@ -34,7 +34,7 @@ struct Error {
   static void error(int line, const std::string& msg) {
     report(line, "", msg);
   }
-  static void runtimeError(RuntimeError& error) {
+  static void runtimeError(const RuntimeError& error) {
     report(error.token.line, "", error.what());
     hadRuntimeError = true;
   }

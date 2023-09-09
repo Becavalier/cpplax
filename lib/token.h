@@ -8,8 +8,8 @@
 #include <cstdint>
 #include <iomanip>
 #include <iostream>
-#include "lib/helper.h"
-#include "lib/type.h"
+#include "./helper.h"
+#include "./type.h"
 
 struct Token {
   friend std::ostream &operator<<(std::ostream &os, const Token &token);

@@ -12,7 +12,7 @@ set (CMAKE_VERBOSE_MAKEFILE "OFF")
 set (CMAKE_CXX_STANDARD 20)
 set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} \
   -v          \
-  -O3         \
+  -O0         \
   -Wall       \
   -g          \
   -ggdb")
@@ -30,5 +30,5 @@ add_subdirectory (lib/)
 # Add executable.
 add_executable(${OUTPUT} ${DIR_SRCS})
 
-target_link_libraries (${OUTPUT} cpplox-core pthread)
+target_link_libraries (${OUTPUT} cpplox-core)
  

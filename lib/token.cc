@@ -1,6 +1,6 @@
 #include <cassert>
-#include "lib/token.h"
-#include "lib/helper.h"
+#include "./token.h"
+#include "./helper.h"
 
 std::ostream& operator<<(std::ostream& os, const Token& token) {
   os 

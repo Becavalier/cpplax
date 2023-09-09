@@ -5,9 +5,9 @@
 #include <sstream>
 #include <memory>
 #include <variant>
-#include "lib/token.h"
-#include "lib/helper.h"
-#include "lib/type.h"
+#include "./token.h"
+#include "./helper.h"
+#include "./type.h"
 
 // Symbols.
 struct BinaryExpr;
@@ -41,6 +41,7 @@ struct ExprVisitor {
 
 struct Expr {
   using sharedExprPtr = std::shared_ptr<Expr>;
+  using sharedConstExprPtr = std::shared_ptr<const Expr>;
   virtual typeRuntimeValue accept(ExprVisitor*) = 0;
   virtual ~Expr() {};
 };
@@ -94,7 +95,7 @@ struct LogicalExpr :
 
 struct VariableExpr : public Expr, public std::enable_shared_from_this<VariableExpr> {
   const Token& name;
-  VariableExpr(const Token& name) : name(name) {}
+  explicit VariableExpr(const Token& name) : name(name) {}
   typeRuntimeValue accept(ExprVisitor* visitor) override {
     return visitor->visitVariableExpr(shared_from_this());
   }
@@ -113,15 +114,15 @@ struct BinaryExpr : public Expr, public std::enable_shared_from_this<BinaryExpr>
 
 struct LiteralExpr :  public Expr, public std::enable_shared_from_this<LiteralExpr> {
   const Token::typeLiteral value;
-  LiteralExpr(Token::typeLiteral value) : value(value) {}
+  explicit LiteralExpr(Token::typeLiteral value) : value(value) {}
   typeRuntimeValue accept(ExprVisitor* visitor) override {
     return visitor->visitLiteralExpr(shared_from_this());
   }
 };
-
+ 
 struct GroupingExpr : public Expr, public std::enable_shared_from_this<GroupingExpr> {
   const sharedExprPtr expression;
-  GroupingExpr(sharedExprPtr expression) : expression(expression) {}
+  explicit GroupingExpr(sharedExprPtr expression) : expression(expression) {}
   typeRuntimeValue accept(ExprVisitor* visitor) override {
     return visitor->visitGroupingExpr(shared_from_this());
   }

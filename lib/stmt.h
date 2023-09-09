@@ -4,8 +4,8 @@
 #include <memory>
 #include <vector>
 #include <functional>
-#include "lib/type.h"
-#include "lib/expr.h"
+#include "./type.h"
+#include "./expr.h"
 
 struct ExpressionStmt;
 struct PrintStmt;
@@ -37,7 +37,7 @@ struct Stmt {
 
 struct ExpressionStmt : public Stmt, public std::enable_shared_from_this<ExpressionStmt> {
   const Expr::sharedExprPtr expression;
-  ExpressionStmt(Expr::sharedExprPtr expression) : expression(expression) {}
+  explicit ExpressionStmt(Expr::sharedExprPtr expression) : expression(expression) {}
   void accept(StmtVisitor* visitor) override {
     visitor->visitExpressionStmt(shared_from_this());
   }
@@ -45,7 +45,7 @@ struct ExpressionStmt : public Stmt, public std::enable_shared_from_this<Express
 
 struct PrintStmt : public Stmt, public std::enable_shared_from_this<PrintStmt> {
   const Expr::sharedExprPtr expression;
-  PrintStmt(Expr::sharedExprPtr expression) : expression(expression) {}
+  explicit PrintStmt(Expr::sharedExprPtr expression) : expression(expression) {}
   void accept(StmtVisitor* visitor) override {
     visitor->visitPrintStmt(shared_from_this());
   }
@@ -62,7 +62,7 @@ struct VarStmt : public Stmt, public std::enable_shared_from_this<VarStmt> {
 
 struct BlockStmt : public Stmt, public std::enable_shared_from_this<BlockStmt> {
   const std::vector<sharedStmtPtr> statements;
-  BlockStmt(const std::vector<sharedStmtPtr>& statements) : statements(statements) {}
+  explicit BlockStmt(const std::vector<sharedStmtPtr>& statements) : statements(statements) {}
   void accept(StmtVisitor* visitor) override {
     visitor->visitBlockStmt(shared_from_this());
   }

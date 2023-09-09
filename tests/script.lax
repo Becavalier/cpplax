@@ -1,27 +1,13 @@
-/* print nil;
+var a = "global";
+{
+  var a = a;
+  fn showA() {
+    print a;
+  }
 
-return 234;
-
-var a = 0;
-var temp;
-
-for (var b = 1; a < 10000; b = temp + b) {
-  print "\n"+a;
-  temp = a;
-  a = b;
+  showA();
+  var a = "block";
+  showA();
 }
 
-fn sayHi(first, last) {
-  print "\nHi, " + first + " " + last + "!";
-}
 
-sayHi("Dear", "Reader");
-*/
-fn fib(n) {
-  if (n <= 1) return n;
-  return fib(n - 2) + fib(n - 1);
-}
-
-for (var i = 0; i < 20; i = i + 1) {
-  print "\n" + fib(i);
-}

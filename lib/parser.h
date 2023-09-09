@@ -5,17 +5,16 @@
 #include <memory>
 #include <string>
 #include <functional>
-#include "lib/token.h"
-#include "lib/expr.h"
-#include "lib/stmt.h"
-#include "lib/error.h"
-#include "lib/helper.h"
+#include "./token.h"
+#include "./expr.h"
+#include "./stmt.h"
+#include "./error.h"
+#include "./helper.h"
 
 class ParseError : public std::exception {};
 
 class Parser {
   std::vector<Token>::const_iterator current;
-  
   static auto error(const Token& token, const std::string& msg) {
     Error::error(token, msg);
     return ParseError {};
@@ -30,7 +29,7 @@ class Parser {
     return peek().type == TokenType::SOURCE_EOF;  // Stop when meeting EOF.
   }
   auto& advance(void) {
-    if (!isAtEnd()) current++;
+    if (!isAtEnd()) ++current;
     return previous();
   }
   auto check(const TokenType& type) {
@@ -107,7 +106,7 @@ class Parser {
       if (match(TokenType::FN)) return function("function");
       if (match(TokenType::VAR)) return varDeclaration();
       return statement();
-    } catch (ParseError error) {
+    } catch (const ParseError& parserError) {
       synchronize();
       return nullptr;
     }
@@ -365,9 +364,7 @@ class Parser {
     throw error(peek(), "expect expression.");
   }
  public:
-  Parser(const std::vector<Token>& tokens) {
-    current = tokens.cbegin();
-  }
+  explicit Parser(const std::vector<Token>& tokens) : current(tokens.cbegin()) {}
   auto parse(void) {
     // program → declaration* EOF ;
     std::vector<Stmt::sharedStmtPtr> statements;

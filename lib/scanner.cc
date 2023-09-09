@@ -1,4 +1,4 @@
-#include "lib/scanner.h"
+#include "./scanner.h"
 
 const typeKeywordList Scanner::keywords =  {
   { "and", TokenType::AND },

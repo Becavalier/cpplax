@@ -6,9 +6,9 @@
 #include <cctype>
 #include <string>
 #include <unordered_map>
-#include "lib/token.h"
-#include "lib/error.h"
-#include "lib/type.h"
+#include "./token.h"
+#include "./error.h"
+#include "./type.h"
 
 class Scanner {
   int line = 1;
@@ -18,7 +18,7 @@ class Scanner {
   std::string::const_iterator current;  // Points at the character currently being considered.
   static const typeKeywordList keywords;
  public:
-  Scanner(const std::string& code) : source(code) {};
+  explicit Scanner(const std::string& code) : source(code) {};
   bool isAtEnd(void) const {
     return current == cend(source);
   }

@@ -1,6 +1,6 @@
 #include <string>
 #include <sstream>
-#include "lib/helper.h"
+#include "./helper.h"
 
 std::string toRawString(const std::string& str) {
   std::ostringstream oss;
