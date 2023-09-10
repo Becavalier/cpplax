@@ -35,6 +35,8 @@ struct Lax {
     Resolver resolver { &interpreter };
     resolver.resolve(ast);
 
+    if (Error::hadError) return;
+
     // Interpret.
     interpreter.interpret(ast);
   }

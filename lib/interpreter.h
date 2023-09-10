@@ -29,7 +29,8 @@ struct ReturnException : public std::exception {
 
 struct Interpreter : public ExprVisitor, public StmtVisitor {
   const std::shared_ptr<Env> globals = std::make_shared<Env>();
-  std::unordered_map<Expr::sharedConstExprPtr, int> locals;
+  // Saving the scope steps for locals.
+  std::unordered_map<Expr::sharedConstExprPtr, int> locals;  
   std::shared_ptr<Env> env = globals;  // Global scope.
   struct BlockExecution {
     Interpreter* thisPtr;
@@ -274,7 +275,7 @@ struct Function : public Invokable {
     // Each function gets its own environment where it stores those variables.
     // "env -> closure -> global".
     auto env = std::make_shared<Env>(closure);
-    for (auto i = 0; i < declaration->parames.size(); i++) {
+    for (size_t i = 0; i < declaration->parames.size(); i++) {
       // Save the passing arguments into the env.
       env->define(declaration->parames.at(i).get().lexeme, arguments.at(i));  
     }

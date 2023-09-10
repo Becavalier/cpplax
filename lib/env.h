@@ -29,9 +29,7 @@ class Env : public std::enable_shared_from_this<Env> {
   }
   typeRuntimeValue get(const Token& name) {
     const auto target = values.find(name.lexeme);
-    if (target != values.end()) {
-      return target->second;
-    }
+    if (target != values.end()) return target->second;
     if (enclosing != nullptr) return enclosing->get(name);  // Look up from the upper scope.
     throw RuntimeError(name, ("undefined variable '" + name.lexeme + "'.").data());
   }

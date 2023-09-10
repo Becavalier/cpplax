@@ -1,12 +1,10 @@
 var a = "global";
 {
-  var a = a;
+  var a = 123;
   fn showA() {
     print a;
   }
-
   showA();
-  var a = "block";
   showA();
 }
 

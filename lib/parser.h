@@ -180,7 +180,7 @@ class Parser {
   }
   auto returnStatement(void) {
     // returnStmt → "return" expression? ";" ;
-    auto keyword = previous();
+    const auto& keyword = previous();
     Expr::sharedExprPtr value = nullptr;
     if (!check(TokenType::SEMICOLON)) {
       value = expression();

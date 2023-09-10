@@ -46,7 +46,7 @@ class Scanner {
     // Look ahead to see if it could match another token type (the combination one).
     if (isAtEnd()) return false;
     if (*current != expected) return false;
-    current++;
+    ++current;
     return true;
   }
   bool isDigit(char c) const {

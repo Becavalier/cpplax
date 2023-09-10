@@ -47,7 +47,7 @@ struct Expr {
 };
 
 struct AssignExpr : public Expr, public std::enable_shared_from_this<AssignExpr> {
-  const Token& name;  // The variable being assigned to, rather than an "Expr".
+  const Token& name;  // The variable being assigned to.
   const sharedExprPtr value;
   AssignExpr(const Token& name, sharedExprPtr value) : name(name), value(value) {}
   typeRuntimeValue accept(ExprVisitor* visitor) override {
