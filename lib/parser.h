@@ -49,7 +49,7 @@ class Parser {
         case TokenType::PRINT:
         case TokenType::RETURN:
           return;
-        default:;
+        default: ;
       }
       advance();
     }
@@ -72,7 +72,7 @@ class Parser {
   }
   const auto& consume(TokenType type, const std::string& msg) {
     if (check(type)) return advance();
-    throw error(peek(), msg);
+    throw error(previous(), msg);
   }
   Stmt::sharedStmtPtr varDeclaration(void) {
     // varDecl → "var" IDENTIFIER ( "=" expression )? ";" ;
@@ -83,6 +83,17 @@ class Parser {
     }
     consume(TokenType::SEMICOLON, "expect ';' after variable declaration.");
     return std::make_shared<VarStmt>(name, initializer);
+  }
+  Stmt::sharedStmtPtr classDeclaration(void) {
+    // classDecl → "class" IDENTIFIER "{" function* "}" ;
+    const auto& name = consume(TokenType::IDENTIFIER, "expect class name.");
+    consume(TokenType::LEFT_BRACE, "expect '{' before class body.");
+    std::vector<std::shared_ptr<FunctionStmt>> methods;
+    while (!check(TokenType::RIGHT_BRACE) && !isAtEnd()) {
+      methods.push_back(function("method"));
+    }
+    consume(TokenType::RIGHT_BRACE, "expect '}' after class body.");
+    return std::make_shared<ClassStmt>(name, methods);
   }
   std::shared_ptr<FunctionStmt> function(const std::string& kind) {
     const auto& name = consume(TokenType::IDENTIFIER, "expect " + kind + " name.");
@@ -103,6 +114,7 @@ class Parser {
   }
   Stmt::sharedStmtPtr declaration(void) {
     try {
+      if (match(TokenType::CLASS)) return classDeclaration();
       if (match(TokenType::FN)) return function("function");
       if (match(TokenType::VAR)) return varDeclaration();
       return statement();
@@ -257,24 +269,18 @@ class Parser {
     return std::make_shared<CallExpr>(callee, paren, arguments);
   }
   Expr::sharedExprPtr assignment(void) {
-    // assignment → IDENTIFIER "=" assignment 
+    // call → primary ( "(" arguments? ")" | "." IDENTIFIER )* ;
+    // assignment → ( call "." )? IDENTIFIER "=" assignment
     //            | logic_or ;
-    /**
-     * (AssignExpr varA 
-     *   (AssignExpr varB 
-     *     (AssignExpr varC (equality))
-     *   )
-     * )
-     * 
-    */
     auto expr = logicalOr();
     if (match(TokenType::EQUAL)) {
       const auto& equals = previous();
       auto value = assignment();
       // Only certain types of expression could be lvalues.
-      if (auto castPtr = std::dynamic_pointer_cast<VariableExpr>(expr)) {
-        const auto& name = castPtr->name;
-        return std::make_shared<AssignExpr>(name, value);
+      if (auto castPtr = std::dynamic_pointer_cast<VariableExpr>(expr)) {  // "IDENTIFIER".
+        return std::make_shared<AssignExpr>(castPtr->name, value);
+      } else if (auto castPtr = std::dynamic_pointer_cast<GetExpr>(expr)) {
+        return std::make_shared<SetExpr>(castPtr->obj, castPtr->name, value);
       }
       error(equals, "invalid assignment target.");
     }
@@ -334,11 +340,14 @@ class Parser {
     return call();
   }
   Expr::sharedExprPtr call(void) {
-    // call → primary ( "(" arguments? ")" )* ;
+    // call → primary ( "(" arguments? ")" | "." IDENTIFIER )* ;
     auto expr = primary();
     while (true) {
       if (match(TokenType::LEFT_PAREN)) {
         expr = finishCall(expr);
+      } else if (match(TokenType::DOT)) {
+        auto& name = consume(TokenType::IDENTIFIER, "expect property name after '.'.");
+        expr = std::make_shared<GetExpr>(name, expr);
       } else {
         break;
       }

@@ -15,6 +15,7 @@ struct IfStmt;
 struct WhileStmt;
 struct FunctionStmt;
 struct ReturnStmt;
+struct ClassStmt;
 
 struct StmtVisitor {
   virtual void visitExpressionStmt(std::shared_ptr<const ExpressionStmt>) = 0;
@@ -25,6 +26,7 @@ struct StmtVisitor {
   virtual void visitWhileStmt(std::shared_ptr<const WhileStmt>) = 0;
   virtual void visitFunctionStmt(std::shared_ptr<const FunctionStmt>) = 0;
   virtual void visitReturnStmt(std::shared_ptr<const ReturnStmt>) = 0;
+  virtual void visitClassStmt(std::shared_ptr<const ClassStmt>) = 0;
   virtual ~StmtVisitor() {}
 };
 
@@ -103,6 +105,15 @@ struct ReturnStmt : public Stmt, public std::enable_shared_from_this<ReturnStmt>
   ReturnStmt(const Token& keyword, const Expr::sharedExprPtr value) : keyword(keyword), value(value) {}
   void accept(StmtVisitor* visitor) override {
     visitor->visitReturnStmt(shared_from_this());
+  }
+};
+
+struct ClassStmt : public Stmt, public std::enable_shared_from_this<ClassStmt> {
+  const Token& name; 
+  const std::vector<std::shared_ptr<FunctionStmt>> methods;
+  ClassStmt(const Token& name, const std::vector<std::shared_ptr<FunctionStmt>>& methods) : name(name), methods(methods) {}
+  void accept(StmtVisitor* visitor) override {
+    visitor->visitClassStmt(shared_from_this());
   }
 };
 

@@ -120,6 +120,7 @@ class Scanner {
           }
         } else if (forwardMatch('*')) {
           while (!isAtEnd()) {
+            if (*current == '\n') line++;
             if (*current != '*' || peekNext() != '/') {
               advance();
             } else {

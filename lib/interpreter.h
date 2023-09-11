@@ -5,6 +5,8 @@
 #include <vector>
 #include <string>
 #include <chrono>
+#include <unordered_map>
+#include <variant>
 #include "./expr.h"
 #include "./helper.h"
 #include "./error.h"
@@ -15,11 +17,62 @@
 // Forward declaration.
 struct Interpreter;
 
-// This is an "invokable" class for function and method.
+/**
+ * Class "Invokable", for function and method.
+*/
 struct Invokable {  
   virtual size_t arity() = 0;
   virtual typeRuntimeValue invoke(Interpreter*, std::vector<typeRuntimeValue>&) = 0;
   virtual ~Invokable() {}
+};
+
+/**
+ * Class "Function".
+*/
+struct Function : public Invokable {
+  Function(std::shared_ptr<const FunctionStmt> declaration, std::shared_ptr<Env> closure) : declaration(declaration), closure(closure) {}
+  size_t arity() override {
+    return declaration->parames.size();
+  }
+  typeRuntimeValue invoke(Interpreter*, std::vector<typeRuntimeValue>&) override;
+ private:
+  const std::shared_ptr<const FunctionStmt> declaration;
+  std::shared_ptr<Env> closure;  // Capture the env at the definition place.
+};
+
+/**
+ * Class "Class".
+*/
+struct Class : public Invokable, public std::enable_shared_from_this<Class> {
+  const std::string& name;
+  explicit Class(const std::string& name, std::unordered_map<std::string, std::shared_ptr<Function>>& methods) : name(name), methods(methods) {}
+  size_t arity() override {
+    return 0;
+  }
+  typeRuntimeValue invoke(Interpreter* interpreter, std::vector<typeRuntimeValue>& arguments) override {
+    return std::make_shared<ClassInstance>(shared_from_this());  // Return a new instance.
+  }
+  std::shared_ptr<Function> findMethod(const std::string& name) {
+    if (methods.contains(name)) return methods[name];
+    return nullptr;
+  }
+ private:
+  std::unordered_map<std::string, std::shared_ptr<Function>> methods;
+};
+
+
+/**
+ * Class "ClassInstance".
+*/
+struct ClassInstance {
+  explicit ClassInstance(std::shared_ptr<Class> thisClass) : thisClass(thisClass) {}
+  typeRuntimeValue get(const Token& name);
+  void set(const Token& name, typeRuntimeValue value) {
+    fields[name.lexeme] = value;
+  }
+ private:
+  std::shared_ptr<Class> thisClass;
+  std::unordered_map<std::string, typeRuntimeValue> fields;
 };
 
 struct ReturnException : public std::exception {
@@ -27,6 +80,10 @@ struct ReturnException : public std::exception {
   explicit ReturnException(const typeRuntimeValue& value) : value(value) {}
 };
 
+
+/**
+ * Class "Interpreter".
+*/
 struct Interpreter : public ExprVisitor, public StmtVisitor {
   const std::shared_ptr<Env> globals = std::make_shared<Env>();
   // Saving the scope steps for locals.
@@ -214,6 +271,20 @@ struct Interpreter : public ExprVisitor, public StmtVisitor {
     }
     return function->invoke(this, arguments);
   }
+  typeRuntimeValue visitGetExpr(std::shared_ptr<const GetExpr> expr) override {
+    auto obj = evaluate(expr->obj);
+    auto vp = std::get_if<std::shared_ptr<ClassInstance>>(&obj);  // Only "ClassInstance" is able to have a getter.
+    if (vp != nullptr) return (*vp)->get(expr->name);
+    throw RuntimeError { expr->name, "only instances have properties." };
+  }
+  typeRuntimeValue visitSetExpr(std::shared_ptr<const SetExpr> expr) override {
+    auto obj = evaluate(expr->obj);
+    auto vp = std::get_if<std::shared_ptr<ClassInstance>>(&obj);  // Only "ClassInstance" is able to have a setter.
+    if (vp == nullptr) throw RuntimeError { expr->name, "only instances have fields." };
+    auto value = evaluate(expr->value);
+    (*vp)->set(expr->name, value);
+    return value;
+  }
   void visitExpressionStmt(std::shared_ptr<const ExpressionStmt> stmt) override {
     evaluate(stmt->expression);
   }
@@ -249,6 +320,7 @@ struct Interpreter : public ExprVisitor, public StmtVisitor {
     if (stmt->value != nullptr) value = evaluate(stmt->value);
     throw ReturnException { value };
   }
+  void visitClassStmt(std::shared_ptr<const ClassStmt> stmt) override;
   void executeBlock(const std::vector<Stmt::sharedStmtPtr>& statements, std::shared_ptr<Env> env) {
     BlockExecution { this, statements, this->env, env, }.execute();
   }
@@ -266,35 +338,45 @@ struct Interpreter : public ExprVisitor, public StmtVisitor {
   }
 };
 
-struct Function : public Invokable {
-  Function(std::shared_ptr<const FunctionStmt> declaration, std::shared_ptr<Env> closure) : declaration(declaration), closure(closure) {}
-  size_t arity() override {
-    return declaration->parames.size();
-  };
-  typeRuntimeValue invoke(Interpreter* interpreter, std::vector<typeRuntimeValue>& arguments) override {
-    // Each function gets its own environment where it stores those variables.
-    // "env -> closure -> global".
-    auto env = std::make_shared<Env>(closure);
-    for (size_t i = 0; i < declaration->parames.size(); i++) {
-      // Save the passing arguments into the env.
-      env->define(declaration->parames.at(i).get().lexeme, arguments.at(i));  
-    }
-    try {
-      interpreter->executeBlock(declaration->body, env);
-    } catch (const ReturnException& ret) {
-      return ret.value;
-    }
-    return std::monostate {};
-  };
- private:
-  const std::shared_ptr<const FunctionStmt> declaration;
-  std::shared_ptr<Env> closure;  // Capture the env at the definition place.
-};
-
-// This function depends on the full definition of "Function" class.
+// Post definitions.
 void Interpreter::visitFunctionStmt(std::shared_ptr<const FunctionStmt> stmt) {
   std::shared_ptr<Invokable> invoker = std::make_shared<Function>(stmt, env);  // Up-casting.
   env->define(stmt->name.lexeme, invoker);
+}
+
+void Interpreter::visitClassStmt(std::shared_ptr<const ClassStmt> stmt) {
+  // Turn the class syntax node into its runtime representation (class Class).
+  env->define(stmt->name.lexeme, std::monostate {});
+  std::unordered_map<std::string, std::shared_ptr<Function>> methods;
+  for (const auto& method : stmt->methods) {
+    auto function = std::make_shared<Function>(method, env);
+    methods[method->name.lexeme] = function;
+  }
+  auto thisClass = std::make_shared<Class>(stmt->name.lexeme, methods);
+  env->assign(stmt->name, thisClass);
+}
+
+typeRuntimeValue Function::invoke(Interpreter* interpreter, std::vector<typeRuntimeValue>& arguments) {
+  // Each function gets its own environment where it stores those variables.
+  // "env -> closure -> global".
+  auto env = std::make_shared<Env>(closure);
+  for (size_t i = 0; i < declaration->parames.size(); i++) {
+    // Save the passing arguments into the env.
+    env->define(declaration->parames.at(i).get().lexeme, arguments.at(i));  
+  }
+  try {
+    interpreter->executeBlock(declaration->body, env);
+  } catch (const ReturnException& ret) {
+    return ret.value;
+  }
+  return std::monostate {};
+}
+
+typeRuntimeValue ClassInstance::get(const Token& name) {
+  if (fields.contains(name.lexeme)) return fields[name.lexeme];
+  auto method = thisClass->findMethod(name.lexeme);
+  if (method != nullptr) return method;
+  throw RuntimeError { name, "undefined property '" + name.lexeme + "'." };
 }
 
 #endif

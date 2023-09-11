@@ -127,6 +127,18 @@ struct Resolver : public ExprVisitor, public StmtVisitor {
     resolve(stmt->condition);
     resolve(stmt->body);
   }
+  void visitClassStmt(std::shared_ptr<const ClassStmt> stmt) override {
+    declare(stmt->name);
+    define(stmt->name);
+    for (auto& method : stmt->methods) {
+      auto declaration = FunctionType::METHOD;
+      resolveFunction(method, declaration);
+    }
+  }
+  typeRuntimeValue visitGetExpr(std::shared_ptr<const GetExpr> expr) override {
+    resolve(expr->obj);
+    return std::monostate {};
+  }
   typeRuntimeValue visitVariableExpr(std::shared_ptr<const VariableExpr> expr) override { 
     // Check if the variable is being accessed inside its own initializer.
     if (!scopes.empty()) {
@@ -169,6 +181,12 @@ struct Resolver : public ExprVisitor, public StmtVisitor {
   }
   typeRuntimeValue visitUnaryExpr(std::shared_ptr<const UnaryExpr> expr) override {
     resolve(expr->right);
+    return std::monostate {};
+  }
+  typeRuntimeValue visitSetExpr(std::shared_ptr<const SetExpr> expr) override {
+    // Recurse into the two subexpressions of SetExpr.
+    resolve(expr->value);
+    resolve(expr->obj);
     return std::monostate {};
   }
 };

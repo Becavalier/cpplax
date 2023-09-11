@@ -57,11 +57,19 @@ enum class TokenType : uint8_t {
 
 enum class FunctionType : uint8_t {
   NONE,
-  FUNCTION
+  FUNCTION,
+  METHOD,
 };
 
 struct Invokable;
-using typeRuntimeValue = std::variant<std::shared_ptr<Invokable>,std::monostate, std::string, double, bool>;
+struct ClassInstance;
+using typeRuntimeValue = std::variant<
+  std::monostate, 
+  std::shared_ptr<Invokable>, 
+  std::shared_ptr<ClassInstance>,
+  std::string, 
+  double, 
+  bool>;
 using typeKeywordList = std::unordered_map<std::string, TokenType>;
 using typeScopeRecord = std::unordered_map<std::string, bool>;
 

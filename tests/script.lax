@@ -1,11 +1,11 @@
-var a = "global";
-{
-  var a = 123;
-  fn showA() {
-    print a;
+fn a() {
+  var b = 1;
+  class Bacon {
+    eat() {
+      print b;
+    }
   }
-  showA();
-  showA();
+  return Bacon;
 }
 
-
+a()().eaft();
