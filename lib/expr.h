@@ -33,7 +33,7 @@ struct ExprVisitor {
   virtual typeRuntimeValue visitLogicalExpr(std::shared_ptr<const LogicalExpr>) = 0;
   virtual typeRuntimeValue visitSetExpr(std::shared_ptr<const SetExpr>) = 0;
   // virtual typeRuntimeValue visitSuperExpr(const SuperExpr* expr) = 0;
-  // virtual typeRuntimeValue visitThisExpr(const ThisExpr* expr) = 0;
+  virtual typeRuntimeValue visitThisExpr(std::shared_ptr<const ThisExpr>) = 0;
   virtual typeRuntimeValue visitUnaryExpr(std::shared_ptr<const UnaryExpr>) = 0;
   virtual typeRuntimeValue visitVariableExpr(std::shared_ptr<const VariableExpr>) = 0;
   virtual ~ExprVisitor() {}
@@ -131,12 +131,20 @@ struct GetExpr : public Expr, public std::enable_shared_from_this<GetExpr> {
 };
 
 struct SetExpr : public Expr, public std::enable_shared_from_this<SetExpr> {
-  const sharedExprPtr obj;  // The "primary" (callee).
-  const Token& name;  // The property name that is being accessed (identifier).
-  const sharedExprPtr value;  // The "primary" (callee).
+  const sharedExprPtr obj; 
+  const Token& name;
+  const sharedExprPtr value; 
   SetExpr(sharedExprPtr obj, const Token& name, sharedExprPtr value) : obj(obj), name(name), value(value) {}
   typeRuntimeValue accept(ExprVisitor* visitor) override {
     return visitor->visitSetExpr(shared_from_this());
+  }
+};
+
+struct ThisExpr : public Expr, public std::enable_shared_from_this<ThisExpr> {
+  const Token& keyword; 
+  explicit ThisExpr(const Token& keyword) : keyword(keyword) {}
+  typeRuntimeValue accept(ExprVisitor* visitor) override {
+    return visitor->visitThisExpr(shared_from_this());
   }
 };
 

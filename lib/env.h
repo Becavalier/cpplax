@@ -24,8 +24,8 @@ class Env : public std::enable_shared_from_this<Env> {
     }
     return env;
   }
-  typeRuntimeValue getAt(int distance, const Token& name) {
-    return ancestor(distance)->values[name.lexeme];
+  typeRuntimeValue getAt(int distance, const std::string& name) {
+    return ancestor(distance)->values[name];
   }
   typeRuntimeValue get(const Token& name) {
     const auto target = values.find(name.lexeme);

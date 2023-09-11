@@ -1,11 +1,9 @@
-fn a() {
-  var b = 1;
-  class Bacon {
-    eat() {
-      print b;
-    }
+class Foo {
+  init() {
+    print this;
+    return;
   }
-  return Bacon;
 }
 
-a()().eaft();
+var foo = Foo();
+print foo.init();

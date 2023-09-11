@@ -359,12 +359,9 @@ class Parser {
     if (match(TokenType::FALSE)) return std::make_shared<LiteralExpr>(false);
     if (match(TokenType::TRUE)) return std::make_shared<LiteralExpr>(true);
     if (match(TokenType::NIL)) return std::make_shared<LiteralExpr>(std::monostate {});
-    if (match({ TokenType::NUMBER, TokenType::STRING, })) {
-      return std::make_shared<LiteralExpr>(previous().literal);
-    }
-    if (match(TokenType::IDENTIFIER)) {
-      return std::make_shared<VariableExpr>(previous());
-    }
+    if (match({ TokenType::NUMBER, TokenType::STRING, })) return std::make_shared<LiteralExpr>(previous().literal);
+    if (match(TokenType::THIS)) return std::make_shared<ThisExpr>(previous());
+    if (match(TokenType::IDENTIFIER)) return std::make_shared<VariableExpr>(previous());
     if (match(TokenType::LEFT_PAREN)) {
       auto expr = expression();
       consume(TokenType::RIGHT_PAREN, "expect ')' after expression.");  // Find the closing pair.

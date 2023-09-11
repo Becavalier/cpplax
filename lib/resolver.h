@@ -19,11 +19,13 @@
  * - VarStmt: add variables.
  * - VariableExpr: bind local.
  * - AssignExpr: bind local (lvalue).
+ * - ThisExpr: bind "this".
  * 
 */
 struct Resolver : public ExprVisitor, public StmtVisitor {
   Interpreter* interpreter;
   FunctionType currentFunction = FunctionType::NONE;
+  ClassType currentClass = ClassType::NONE;
   std::vector<typeScopeRecord> scopes {};  // For tracking local block scopes.
   explicit Resolver(Interpreter* interpreter) : interpreter(interpreter) {}
   void resolve(Stmt::sharedStmtPtr stmt) {
@@ -120,6 +122,9 @@ struct Resolver : public ExprVisitor, public StmtVisitor {
       Error::error(stmt->keyword, "can't return from top-level code.");
     }
     if (stmt->value != nullptr) {
+      if (currentFunction == FunctionType::INITIALIZER) {
+        Error::error(stmt->keyword, "can't return a value from an initializer.");
+      }
       resolve(stmt->value);
     }
   }
@@ -128,12 +133,21 @@ struct Resolver : public ExprVisitor, public StmtVisitor {
     resolve(stmt->body);
   }
   void visitClassStmt(std::shared_ptr<const ClassStmt> stmt) override {
+    ClassType enclosingClass = currentClass;
+    currentClass = ClassType::CLASS;
     declare(stmt->name);
     define(stmt->name);
+    beginScope();
+    scopes.back()["this"] = true;
     for (auto& method : stmt->methods) {
       auto declaration = FunctionType::METHOD;
+      if (method->name.lexeme == "init") {
+        declaration = FunctionType::INITIALIZER;
+      }
       resolveFunction(method, declaration);
     }
+    endScope();
+    currentClass = enclosingClass;
   }
   typeRuntimeValue visitGetExpr(std::shared_ptr<const GetExpr> expr) override {
     resolve(expr->obj);
@@ -187,6 +201,13 @@ struct Resolver : public ExprVisitor, public StmtVisitor {
     // Recurse into the two subexpressions of SetExpr.
     resolve(expr->value);
     resolve(expr->obj);
+    return std::monostate {};
+  }
+  typeRuntimeValue visitThisExpr(std::shared_ptr<const ThisExpr> expr) override {
+    if (currentClass == ClassType::NONE) {
+      Error::error(expr->keyword, "can't use 'this' outside of a class.");
+    }
+    resolveLocal(expr, expr->keyword);  // Using "this" as the name of the variable.
     return std::monostate {};
   }
 };

@@ -58,7 +58,13 @@ enum class TokenType : uint8_t {
 enum class FunctionType : uint8_t {
   NONE,
   FUNCTION,
+  INITIALIZER,
   METHOD,
+};
+
+enum class ClassType : uint8_t {
+  NONE,
+  CLASS,
 };
 
 struct Invokable;
