@@ -1,9 +1,15 @@
-class Foo {
-  init() {
-    print this;
-    return;
+class Doughnut {
+  cook() {
+    print this.ff;
   }
 }
 
-var foo = Foo();
-print foo.init();
+class BostonCream < Doughnut {
+  cook() {
+    super.cook();
+  }
+}
+
+var a = BostonCream();
+a.ff = "!23";
+a.cook();

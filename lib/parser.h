@@ -85,15 +85,20 @@ class Parser {
     return std::make_shared<VarStmt>(name, initializer);
   }
   Stmt::sharedStmtPtr classDeclaration(void) {
-    // classDecl → "class" IDENTIFIER "{" function* "}" ;
+    // classDecl → "class" IDENTIFIER ( "<" IDENTIFIER )?  "{" function* "}" ;
     const auto& name = consume(TokenType::IDENTIFIER, "expect class name.");
+    std::shared_ptr<VariableExpr> superClass = nullptr;
+    if (match(TokenType::LESS)) {
+      const auto& identifier = consume(TokenType::IDENTIFIER, "expect superclass name.");
+      superClass = std::make_shared<VariableExpr>(identifier);
+    }
     consume(TokenType::LEFT_BRACE, "expect '{' before class body.");
     std::vector<std::shared_ptr<FunctionStmt>> methods;
     while (!check(TokenType::RIGHT_BRACE) && !isAtEnd()) {
       methods.push_back(function("method"));
     }
     consume(TokenType::RIGHT_BRACE, "expect '}' after class body.");
-    return std::make_shared<ClassStmt>(name, methods);
+    return std::make_shared<ClassStmt>(name, methods, superClass);
   }
   std::shared_ptr<FunctionStmt> function(const std::string& kind) {
     const auto& name = consume(TokenType::IDENTIFIER, "expect " + kind + " name.");
@@ -355,11 +360,21 @@ class Parser {
     return expr;
   }
   Expr::sharedExprPtr primary(void) {
-    // primary → NUMBER | STRING | "true" | "false" | "nil" | "(" expression ")" ;
+    /**
+     primary → "true" | "false" | "nil" | "this"
+             | NUMBER | STRING | IDENTIFIER | "(" expression ")"
+             | "super" "." IDENTIFIER ;
+    */
     if (match(TokenType::FALSE)) return std::make_shared<LiteralExpr>(false);
     if (match(TokenType::TRUE)) return std::make_shared<LiteralExpr>(true);
     if (match(TokenType::NIL)) return std::make_shared<LiteralExpr>(std::monostate {});
     if (match({ TokenType::NUMBER, TokenType::STRING, })) return std::make_shared<LiteralExpr>(previous().literal);
+    if (match(TokenType::SUPER)) {
+      const auto& keyword = previous();
+      consume(TokenType::DOT, "expect '.' after 'super'.");
+      const auto& method = consume(TokenType::IDENTIFIER, "expect superclass method name.");
+      return std::make_shared<SuperExpr>(keyword, method);
+    }
     if (match(TokenType::THIS)) return std::make_shared<ThisExpr>(previous());
     if (match(TokenType::IDENTIFIER)) return std::make_shared<VariableExpr>(previous());
     if (match(TokenType::LEFT_PAREN)) {

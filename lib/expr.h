@@ -32,7 +32,7 @@ struct ExprVisitor {
   virtual typeRuntimeValue visitLiteralExpr(std::shared_ptr<const LiteralExpr>) = 0;
   virtual typeRuntimeValue visitLogicalExpr(std::shared_ptr<const LogicalExpr>) = 0;
   virtual typeRuntimeValue visitSetExpr(std::shared_ptr<const SetExpr>) = 0;
-  // virtual typeRuntimeValue visitSuperExpr(const SuperExpr* expr) = 0;
+  virtual typeRuntimeValue visitSuperExpr(std::shared_ptr<const SuperExpr>) = 0;
   virtual typeRuntimeValue visitThisExpr(std::shared_ptr<const ThisExpr>) = 0;
   virtual typeRuntimeValue visitUnaryExpr(std::shared_ptr<const UnaryExpr>) = 0;
   virtual typeRuntimeValue visitVariableExpr(std::shared_ptr<const VariableExpr>) = 0;
@@ -145,6 +145,15 @@ struct ThisExpr : public Expr, public std::enable_shared_from_this<ThisExpr> {
   explicit ThisExpr(const Token& keyword) : keyword(keyword) {}
   typeRuntimeValue accept(ExprVisitor* visitor) override {
     return visitor->visitThisExpr(shared_from_this());
+  }
+};
+
+struct SuperExpr : public Expr, public std::enable_shared_from_this<SuperExpr> {
+  const Token& keyword; 
+  const Token& method; 
+  explicit SuperExpr(const Token& keyword, const Token& method) : keyword(keyword), method(method) {}
+  typeRuntimeValue accept(ExprVisitor* visitor) override {
+    return visitor->visitSuperExpr(shared_from_this());
   }
 };
 

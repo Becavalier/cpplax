@@ -9,9 +9,9 @@
 #include "./error.h"
 
 class Env : public std::enable_shared_from_this<Env> {
-  std::shared_ptr<Env> enclosing;
   std::unordered_map<std::string, typeRuntimeValue> values;
  public: 
+  std::shared_ptr<Env> enclosing;
   Env(void) : enclosing(nullptr) {};  // For the global scope’s environment.
   explicit Env(std::shared_ptr<Env> enclosing) : enclosing(enclosing) {};
   void define(const std::string& name, const typeRuntimeValue& value) {

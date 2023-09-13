@@ -137,9 +137,20 @@ struct Resolver : public ExprVisitor, public StmtVisitor {
     currentClass = ClassType::CLASS;
     declare(stmt->name);
     define(stmt->name);
+    if (stmt->superClass != nullptr && stmt->name.lexeme == stmt->superClass->name.lexeme) {
+      Error::error(stmt->superClass->name, "a class can't inherit from itself.");
+    }
+    if (stmt->superClass != nullptr) {
+      currentClass = ClassType::SUBCLASS;
+      resolve(stmt->superClass);  // Resolve the class declarations inside blocks.
+    }
+    if (stmt->superClass != nullptr) {
+      beginScope();  // Find "super" in the parent parent scope.
+      scopes.back()["super"] = true;
+    }
     beginScope();
     scopes.back()["this"] = true;
-    for (auto& method : stmt->methods) {
+    for (const auto& method : stmt->methods) {
       auto declaration = FunctionType::METHOD;
       if (method->name.lexeme == "init") {
         declaration = FunctionType::INITIALIZER;
@@ -147,6 +158,7 @@ struct Resolver : public ExprVisitor, public StmtVisitor {
       resolveFunction(method, declaration);
     }
     endScope();
+    if (stmt->superClass != nullptr) endScope();
     currentClass = enclosingClass;
   }
   typeRuntimeValue visitGetExpr(std::shared_ptr<const GetExpr> expr) override {
@@ -201,6 +213,15 @@ struct Resolver : public ExprVisitor, public StmtVisitor {
     // Recurse into the two subexpressions of SetExpr.
     resolve(expr->value);
     resolve(expr->obj);
+    return std::monostate {};
+  }
+  typeRuntimeValue visitSuperExpr(std::shared_ptr<const SuperExpr> expr) override {
+    if (currentClass == ClassType::NONE) {
+      Error::error(expr->keyword, "can't use 'super' outside of a class.");
+    } else if (currentClass != ClassType::SUBCLASS) {
+      Error::error(expr->keyword, "can't use 'super' in a class with no superclass.");
+    }
+    resolveLocal(expr, expr->keyword);
     return std::monostate {};
   }
   typeRuntimeValue visitThisExpr(std::shared_ptr<const ThisExpr> expr) override {

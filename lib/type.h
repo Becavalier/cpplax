@@ -65,6 +65,7 @@ enum class FunctionType : uint8_t {
 enum class ClassType : uint8_t {
   NONE,
   CLASS,
+  SUBCLASS,
 };
 
 struct Invokable;

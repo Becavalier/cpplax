@@ -109,9 +109,10 @@ struct ReturnStmt : public Stmt, public std::enable_shared_from_this<ReturnStmt>
 };
 
 struct ClassStmt : public Stmt, public std::enable_shared_from_this<ClassStmt> {
-  const Token& name; 
+  const Token& name;
   const std::vector<std::shared_ptr<FunctionStmt>> methods;
-  ClassStmt(const Token& name, const std::vector<std::shared_ptr<FunctionStmt>>& methods) : name(name), methods(methods) {}
+  const std::shared_ptr<VariableExpr> superClass;
+  ClassStmt(const Token& name, const std::vector<std::shared_ptr<FunctionStmt>>& methods, std::shared_ptr<VariableExpr> superClass) : name(name), methods(methods), superClass(superClass) {}
   void accept(StmtVisitor* visitor) override {
     visitor->visitClassStmt(shared_from_this());
   }

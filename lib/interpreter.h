@@ -51,11 +51,13 @@ struct Function : public Invokable {
  * Class "Class".
 */
 struct Class : public Invokable, public std::enable_shared_from_this<Class> {
-  const std::string& name;
-  std::shared_ptr<Function> initializer;
-  explicit Class(const std::string& name, std::unordered_map<std::string, std::shared_ptr<Function>>& methods) : name(name), methods(methods) {
-    initializer = findMethod("init");
-  }
+  explicit Class(
+    const std::string& name, 
+    std::shared_ptr<Class> superClass,
+    std::unordered_map<std::string, std::shared_ptr<Function>>& methods) 
+    : name(name), superClass(superClass), methods(methods) {
+      initializer = findMethod("init");
+    }
   size_t arity() override {
     return initializer == nullptr ? 0 : initializer->arity();
   }
@@ -68,9 +70,13 @@ struct Class : public Invokable, public std::enable_shared_from_this<Class> {
   }
   std::shared_ptr<Function> findMethod(const std::string& name) {
     if (methods.contains(name)) return methods[name];
+    if (superClass != nullptr) return superClass->findMethod(name);  // Look up from the inherited class.
     return nullptr;
   }
  private:
+  const std::string& name;
+  std::shared_ptr<Class> superClass;
+  std::shared_ptr<Function> initializer;
   std::unordered_map<std::string, std::shared_ptr<Function>> methods;
 };
 
@@ -278,10 +284,7 @@ struct Interpreter : public ExprVisitor, public StmtVisitor {
     const auto function = std::static_pointer_cast<Invokable>(std::get<std::shared_ptr<Invokable>>(callee));
     // Check if it matches the calling arity.
     if (arguments.size() != function->arity()) {
-      throw RuntimeError { 
-        expr->paren, 
-        "expected " + std::to_string(function->arity()) + " arguments but got " + std::to_string( arguments.size()) + "." 
-      };
+      throw RuntimeError { expr->paren, "expected " + std::to_string(function->arity()) + " arguments but got " + std::to_string( arguments.size()) + "." };
     }
     return function->invoke(this, arguments);
   }
@@ -298,6 +301,16 @@ struct Interpreter : public ExprVisitor, public StmtVisitor {
     auto value = evaluate(expr->value);
     (*vp)->set(expr->name, value);
     return value;
+  }
+  typeRuntimeValue visitSuperExpr(std::shared_ptr<const SuperExpr> expr) override {
+    const auto distance = locals[expr];
+    auto superClass = std::dynamic_pointer_cast<Class>(std::get<std::shared_ptr<Invokable>>(env->getAt(distance, "super")));
+    auto thisClass = std::get<std::shared_ptr<ClassInstance>>(env->getAt(distance - 1, "this"));
+    auto method = superClass->findMethod(expr->method.lexeme);
+    if (method == nullptr) {
+      throw RuntimeError { expr->method, "undefined property '" + expr->method.lexeme + "'." };
+    }
+    return method->bind(thisClass);
   }
   typeRuntimeValue visitThisExpr(std::shared_ptr<const ThisExpr> expr) override {
     return lookUpVariable(expr->keyword, expr);
@@ -363,13 +376,31 @@ void Interpreter::visitFunctionStmt(std::shared_ptr<const FunctionStmt> stmt) {
 
 void Interpreter::visitClassStmt(std::shared_ptr<const ClassStmt> stmt) {
   // Turn the class syntax node into its runtime representation (class Class).
+  std::shared_ptr<Class> superClass = nullptr;
+  if (stmt->superClass != nullptr) {
+    const auto superClassVal = evaluate(stmt->superClass);
+    const auto superClassPtr = std::get_if<std::shared_ptr<Invokable>>(&superClassVal);
+    if (superClassPtr != nullptr) {
+      superClass = std::dynamic_pointer_cast<Class>(*superClassPtr);
+      if (superClass == nullptr) {
+        throw RuntimeError { stmt->superClass->name, "super class must be a class." };
+      }
+    }
+  }
   env->define(stmt->name.lexeme, std::monostate {});
+  if (stmt->superClass != nullptr) {
+    env = std::make_shared<Env>(env);
+    env->define("super", superClass);
+  }
   std::unordered_map<std::string, std::shared_ptr<Function>> methods;
   for (const auto& method : stmt->methods) {
     auto function = std::make_shared<Function>(method, env, method->name.lexeme == "init");
     methods[method->name.lexeme] = function;
   }
-  auto thisClass = std::make_shared<Class>(stmt->name.lexeme, methods);
+  auto thisClass = std::make_shared<Class>(stmt->name.lexeme, superClass, methods);
+  if (superClass != nullptr) {
+    env = env->enclosing;
+  }
   env->assign(stmt->name, thisClass);
 }
 
@@ -392,7 +423,7 @@ typeRuntimeValue Function::invoke(Interpreter* interpreter, std::vector<typeRunt
 
 typeRuntimeValue ClassInstance::get(const Token& name) {  // Access fields in an instance.
   if (fields.contains(name.lexeme)) return fields[name.lexeme];
-  auto method = thisClass->findMethod(name.lexeme);
+  const auto& method = thisClass->findMethod(name.lexeme);
   if (method != nullptr) return method->bind(shared_from_this());
   throw RuntimeError { name, "undefined property '" + name.lexeme + "'." };
 }

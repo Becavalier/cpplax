@@ -34,8 +34,8 @@ struct Error {
   static void error(int line, const std::string& msg) {
     report(line, "", msg);
   }
-  static void runtimeError(const RuntimeError& error) {
-    report(error.token.line, "", error.what());
+  static void runtimeError(const RuntimeError& err) {
+    error(err.token, err.what());
     hadRuntimeError = true;
   }
 };
