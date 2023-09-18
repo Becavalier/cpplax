@@ -25,7 +25,13 @@ struct Lax {
     Scanner scanner { code };
     const std::vector<Token> tokens = scanner.scanTokens();
 
-    // Parsing.
+    if (Error::hadError) return;
+
+    /**
+     * Parsing
+     * 1. The parser would throw as many syntax errors as it knows, and exit only after this.
+     * 2. 
+    */
     Parser parser { tokens };
     const auto ast = parser.parse();
 
@@ -71,7 +77,7 @@ Interpreter Lax::interpreter {};
 
 int main(int argc, char* argv[]) {
   if (argc > 2) {
-    std::cout << "Usage: cpplox [script]" << std::endl;
+    std::cout << "Usage: cpplax [script]" << std::endl;
     std::exit(EX_USAGE);
   } else if (argc == 2) {
     Lax::runFile(argv[PATH_ARG_IDX]);

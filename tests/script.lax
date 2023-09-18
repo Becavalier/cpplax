@@ -1,15 +1,9 @@
-class Doughnut {
-  cook() {
-    print this.ff;
-  }
-}
+var a = .123;
+var b = 123.123;
+var ff = a;
+var fff = "\n!23123";
+print a;
+print b;
+print ff;
+print fff;
 
-class BostonCream < Doughnut {
-  cook() {
-    super.cook();
-  }
-}
-
-var a = BostonCream();
-a.ff = "!23";
-a.cook();

@@ -15,4 +15,5 @@ make
 
 - [ ] Look up variables via indices in the corresponding environment.
 - [ ] Support "break" and "continue".
+- [ ] Support "++" and "--" operators.
 

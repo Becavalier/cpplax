@@ -74,10 +74,10 @@ using typeRuntimeValue = std::variant<
   std::monostate, 
   std::shared_ptr<Invokable>, 
   std::shared_ptr<ClassInstance>,
-  std::string, 
+  std::string_view, 
   double, 
   bool>;
-using typeKeywordList = std::unordered_map<std::string, TokenType>;
-using typeScopeRecord = std::unordered_map<std::string, bool>;
+using typeKeywordList = std::unordered_map<std::string_view, TokenType>;
+using typeScopeRecord = std::unordered_map<std::string_view, bool>;
 
 #endif

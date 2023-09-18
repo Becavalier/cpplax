@@ -2,7 +2,7 @@
 #include <sstream>
 #include "./helper.h"
 
-std::string toRawString(const std::string& str) {
+std::string unescapeStr(const std::string& str) {
   std::ostringstream oss;
   auto curr = cbegin(str);
   while (curr != cend(str)) {
@@ -10,11 +10,7 @@ std::string toRawString(const std::string& str) {
       const auto next = curr + 1;
       if (next != cend(str)) {
         switch(*next) {
-          case '\\': {
-            oss << '\\'; 
-            curr += 2; 
-            break;
-          }
+          // TODO: dealing with double '\' and other escaping characters.
           case 'n': {
             oss << '\n'; 
             curr += 2; 

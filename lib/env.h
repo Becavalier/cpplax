@@ -9,12 +9,12 @@
 #include "./error.h"
 
 class Env : public std::enable_shared_from_this<Env> {
-  std::unordered_map<std::string, typeRuntimeValue> values;
+  std::unordered_map<std::string_view, typeRuntimeValue> values;
  public: 
   std::shared_ptr<Env> enclosing;
   Env(void) : enclosing(nullptr) {};  // For the global scope’s environment.
   explicit Env(std::shared_ptr<Env> enclosing) : enclosing(enclosing) {};
-  void define(const std::string& name, const typeRuntimeValue& value) {
+  void define(const std::string_view name, const typeRuntimeValue& value) {
     values[name] = value;
   } 
   std::shared_ptr<Env> ancestor(int distance) {
@@ -24,14 +24,14 @@ class Env : public std::enable_shared_from_this<Env> {
     }
     return env;
   }
-  typeRuntimeValue getAt(int distance, const std::string& name) {
+  typeRuntimeValue getAt(int distance, const std::string_view name) {
     return ancestor(distance)->values[name];
   }
   typeRuntimeValue get(const Token& name) {
     const auto target = values.find(name.lexeme);
     if (target != values.end()) return target->second;
     if (enclosing != nullptr) return enclosing->get(name);  // Look up from the upper scope.
-    throw RuntimeError(name, ("undefined variable '" + name.lexeme + "'.").data());
+    throw RuntimeError(name, "undefined variable '" + std::string { name.lexeme } + "'.");
   }
   void assignAt(int distance, const Token& name, const typeRuntimeValue& value) {
     ancestor(distance)->values[name.lexeme] = value;
@@ -45,7 +45,7 @@ class Env : public std::enable_shared_from_this<Env> {
       enclosing->assign(name, value);
       return;
     }
-    throw RuntimeError(name, ("undefined variable '" + name.lexeme + "'.").data());
+    throw RuntimeError(name, "undefined variable '" + std::string { name.lexeme } + "'.");
   }
 };
 

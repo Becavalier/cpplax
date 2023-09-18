@@ -65,9 +65,7 @@ struct CallExpr : public Expr, public std::enable_shared_from_this<CallExpr> {
   }
 };
 
-struct LogicalExpr : 
-  public Expr, 
-  public std::enable_shared_from_this<LogicalExpr>{
+struct LogicalExpr : public Expr, public std::enable_shared_from_this<LogicalExpr>{
   const sharedExprPtr left;
   const Token& op;
   const sharedExprPtr right;
@@ -161,7 +159,7 @@ struct SuperExpr : public Expr, public std::enable_shared_from_this<SuperExpr> {
 // Common AST traverser.
 class ExprPrinter : public ExprVisitor, public std::enable_shared_from_this<ExprPrinter> {
   int indentCounter = 2;
-  void formatOutputAST(const std::string& str) {
+  void formatOutputAST(const std::string_view str) {
     auto curr = str.cbegin();
     while ((curr++) != str.cend()) {
       switch (*curr) {
@@ -176,11 +174,11 @@ class ExprPrinter : public ExprVisitor, public std::enable_shared_from_this<Expr
     }
   }
   template<typename... Ts>
-  std::string parenthesize(const std::string& name, const Ts&... args) {
+  std::string parenthesize(const std::string_view name, const Ts&... args) {
     std::ostringstream oss;
     oss << '(' << name;
     ([&](const auto& arg) -> void {
-      oss << ' ' << std::get<std::string>(arg->accept(this));
+      oss << ' ' << std::get<std::string_view>(arg->accept(this));
     }(args), ...);
     oss << ')';
     return oss.str();
@@ -199,7 +197,7 @@ class ExprPrinter : public ExprVisitor, public std::enable_shared_from_this<Expr
   }
  public:
   void print(Expr::sharedExprPtr expr) {
-    const auto str = std::get<std::string>(expr->accept(this));
+    const auto str = std::get<std::string_view>(expr->accept(this));
     formatOutputAST(str);
   }
 };

@@ -17,7 +17,7 @@ set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} \
   -g          \
   -ggdb")
 
-set (OUTPUT "cpplox")
+set (OUTPUT "cpplax")
 set (N_OUTPUT_SRC "bin")
 
 # Resolve release source files;
@@ -30,5 +30,5 @@ add_subdirectory (lib/)
 # Add executable.
 add_executable(${OUTPUT} ${DIR_SRCS})
 
-target_link_libraries (${OUTPUT} cpplox-core)
+target_link_libraries (${OUTPUT} cpplax-core)
  

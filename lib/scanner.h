@@ -11,8 +11,8 @@
 #include "./type.h"
 
 class Scanner {
-  int line = 1;
-  std::string source;
+  size_t line = 1;
+  const std::string& source;
   std::vector<Token> tokens;
   std::string::const_iterator start;  // Points to the first char in the lexeme.
   std::string::const_iterator current;  // Points at the character currently being considered.
@@ -25,11 +25,10 @@ class Scanner {
   std::vector<Token> scanTokens(void) {
     current = cbegin(source);
     while (!isAtEnd()) {
-      start = current;
+      start = current;  // Mark the beginning of the next token.
       scanToken();
     }
-    // Mark the end of file.
-    tokens.emplace_back(TokenType::SOURCE_EOF, "", std::monostate {}, line);
+    tokens.emplace_back(TokenType::SOURCE_EOF, "", std::monostate {}, line);  // Mark the end of file.
     return tokens;
   }
   char advance(void) {
@@ -39,11 +38,10 @@ class Scanner {
     addToken(type, std::monostate {});
   }
   void addToken(TokenType type, Token::typeLiteral literal) {
-    std::string text { start, current };
-    tokens.emplace_back(type, text, literal, line);
+    tokens.emplace_back(type, std::string_view { start, current }, literal, line);
   }
   bool forwardMatch(char expected) {
-    // Look ahead to see if it could match another token type (the combination one).
+    // Look ahead to see if it could match another token type (the combination pair).
     if (isAtEnd()) return false;
     if (*current != expected) return false;
     ++current;
@@ -58,7 +56,7 @@ class Scanner {
   bool isAlphaNumeric(char c) const {
     return isDigit(c) || isAlpha(c);
   }
-  char peekNext(void) {
+  char peekNext(void) const {
     if (current + 1 == cend(source)) return '\0';
     return *(current + 1); 
   }
@@ -73,8 +71,7 @@ class Scanner {
       return;
     }
     advance();  // Catch the closing quote.
-    std::string value = std::string { start + 1, current - 1 };
-    addToken(TokenType::STRING, value);
+    addToken(TokenType::STRING, std::string_view { start + 1, current - 1 });
   }
   void scanNumber(void) {
     while (isDigit(*current)) advance();
@@ -85,15 +82,11 @@ class Scanner {
     addToken(TokenType::NUMBER, std::stod(std::string { start, current }));
   }
   void scanIdentifier(void) {
-    while (isAlphaNumeric(*current)) advance();
+    while (!isAtEnd() && isAlphaNumeric(*current)) advance();
     // Check if it's a keyword.
-    auto text = std::string { start, current };
+    auto text = std::string_view { start, current };
     auto type = Scanner::keywords.find(text);
-    if (type == Scanner::keywords.end()) {
-      addToken(TokenType::IDENTIFIER);
-    } else {
-      addToken(type->second);  // Change token type.
-    }
+    addToken(type == Scanner::keywords.end() ? TokenType::IDENTIFIER : type->second);
   }
   void scanToken(void) {
     char c = advance();
@@ -103,7 +96,11 @@ class Scanner {
       case '{': addToken(TokenType::LEFT_BRACE); break;
       case '}': addToken(TokenType::RIGHT_BRACE); break;
       case ',': addToken(TokenType::COMMA); break;
-      case '.': addToken(TokenType::DOT); break;
+      case '.': {
+        if (isDigit(peekNext())) scanNumber();
+        else addToken(TokenType::DOT);
+        break;
+      }
       case '-': addToken(TokenType::MINUS); break;
       case '+': addToken(TokenType::PLUS); break;
       case ';': addToken(TokenType::SEMICOLON); break;
@@ -128,7 +125,7 @@ class Scanner {
               break;
             }
           }
-        } else {
+        } else { 
           addToken(TokenType::SLASH);
         }
         break;
@@ -144,7 +141,8 @@ class Scanner {
         } else if (isAlpha(c)) {
           scanIdentifier();
         } else {
-          Error::error(line, "unexpected character.");  // Report unrecognized tokens.
+          // TODO: coalescing a run of invalid characters into a single error.
+          Error::error(line, c, "unexpected character.");
         }
         break;
       }

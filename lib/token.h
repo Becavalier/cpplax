@@ -2,7 +2,7 @@
 #define _TOKEN_H
 
 #include <type_traits>
-#include <string>
+#include <string_view>
 #include <utility>
 #include <variant>
 #include <cstdint>
@@ -15,11 +15,10 @@ struct Token {
   friend std::ostream &operator<<(std::ostream &os, const Token &token);
   using typeLiteral = typeRuntimeValue;
   TokenType type;
-  std::string lexeme;
-  typeLiteral literal;
-  int line;
-  Token(const TokenType& type, const std::string& lexeme, const typeLiteral& literal, int line) 
-    : type(type), lexeme(lexeme), literal(literal), line(line) {}
+  const std::string_view lexeme;
+  const typeLiteral literal;   // Tokens aren’t entirely homogeneous either.
+  size_t line;
+  Token(const TokenType& type, const std::string_view lexeme, const typeLiteral& literal, size_t line) : type(type), lexeme(lexeme), literal(literal), line(line) {}
 };
 
 #endif

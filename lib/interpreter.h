@@ -52,9 +52,9 @@ struct Function : public Invokable {
 */
 struct Class : public Invokable, public std::enable_shared_from_this<Class> {
   explicit Class(
-    const std::string& name, 
+    const std::string_view name, 
     std::shared_ptr<Class> superClass,
-    std::unordered_map<std::string, std::shared_ptr<Function>>& methods) 
+    std::unordered_map<std::string_view, std::shared_ptr<Function>>& methods) 
     : name(name), superClass(superClass), methods(methods) {
       initializer = findMethod("init");
     }
@@ -68,16 +68,16 @@ struct Class : public Invokable, public std::enable_shared_from_this<Class> {
     }
     return instance;
   }
-  std::shared_ptr<Function> findMethod(const std::string& name) {
+  std::shared_ptr<Function> findMethod(const std::string_view name) {
     if (methods.contains(name)) return methods[name];
     if (superClass != nullptr) return superClass->findMethod(name);  // Look up from the inherited class.
     return nullptr;
   }
  private:
-  const std::string& name;
+  const std::string_view name;
   std::shared_ptr<Class> superClass;
   std::shared_ptr<Function> initializer;
-  std::unordered_map<std::string, std::shared_ptr<Function>> methods;
+  std::unordered_map<std::string_view, std::shared_ptr<Function>> methods;
 };
 
 
@@ -92,7 +92,7 @@ struct ClassInstance : public std::enable_shared_from_this<ClassInstance> {
   }
  private:
   std::shared_ptr<Class> thisClass;
-  std::unordered_map<std::string, typeRuntimeValue> fields;
+  std::unordered_map<std::string_view, typeRuntimeValue> fields;
 };
 
 struct ReturnException : public std::exception {
@@ -147,7 +147,7 @@ struct Interpreter : public ExprVisitor, public StmtVisitor {
   auto isTruthy(typeRuntimeValue obj) const {
     if (std::holds_alternative<std::monostate>(obj)) return false;
     if (std::holds_alternative<bool>(obj)) return std::get<bool>(obj);
-    if (std::holds_alternative<std::string>(obj)) return std::get<std::string>(obj).size() > 0;
+    if (std::holds_alternative<std::string_view>(obj)) return std::get<std::string_view>(obj).size() > 0;
     if (std::holds_alternative<double>(obj)) return !isDoubleEqual(std::get<double>(obj), 0);
     return true;
   }
@@ -245,16 +245,16 @@ struct Interpreter : public ExprVisitor, public StmtVisitor {
           if (std::holds_alternative<double>(right)) {
             return std::get<double>(left) + std::get<double>(right);
           }
-          if (std::holds_alternative<std::string>(right)) {
-            return (std::ostringstream {} << std::get<double>(left) << std::get<std::string>(right)).str();
+          if (std::holds_alternative<std::string_view>(right)) {
+            return (std::ostringstream {} << std::get<double>(left) << std::get<std::string_view>(right)).str();
           }
         }
-        if (std::holds_alternative<std::string>(left)) {
+        if (std::holds_alternative<std::string_view>(left)) {
           if (std::holds_alternative<double>(right)) {
-            return (std::ostringstream {} << std::get<std::string>(left) << std::get<double>(right)).str();
+            return (std::ostringstream {} << std::get<std::string_view>(left) << std::get<double>(right)).str();
           }
-          if (std::holds_alternative<std::string>(right)) {
-            return (std::ostringstream {} << std::get<std::string>(left) << std::get<std::string>(right)).str();
+          if (std::holds_alternative<std::string_view>(right)) {
+            return (std::ostringstream {} << std::get<std::string_view>(left) << std::get<std::string_view>(right)).str();
           }
         }
         throw RuntimeError { expr->op, "operand must be type of number or string." };
@@ -308,7 +308,7 @@ struct Interpreter : public ExprVisitor, public StmtVisitor {
     auto thisClass = std::get<std::shared_ptr<ClassInstance>>(env->getAt(distance - 1, "this"));
     auto method = superClass->findMethod(expr->method.lexeme);
     if (method == nullptr) {
-      throw RuntimeError { expr->method, "undefined property '" + expr->method.lexeme + "'." };
+      throw RuntimeError { expr->method, "undefined property '" + std::string { expr->method.lexeme } + "'." };
     }
     return method->bind(thisClass);
   }
@@ -319,7 +319,7 @@ struct Interpreter : public ExprVisitor, public StmtVisitor {
     evaluate(stmt->expression);
   }
   void visitPrintStmt(std::shared_ptr<const PrintStmt> stmt) override {
-    std::cout << toRawString(stringifyVariantValue(evaluate(stmt->expression)));
+    std::cout << unescapeStr(stringifyVariantValue(evaluate(stmt->expression)));
   }
   void visitVarStmt(std::shared_ptr<const VarStmt> stmt) override {
     typeRuntimeValue value;
@@ -392,7 +392,7 @@ void Interpreter::visitClassStmt(std::shared_ptr<const ClassStmt> stmt) {
     env = std::make_shared<Env>(env);
     env->define("super", superClass);
   }
-  std::unordered_map<std::string, std::shared_ptr<Function>> methods;
+  std::unordered_map<std::string_view, std::shared_ptr<Function>> methods;
   for (const auto& method : stmt->methods) {
     auto function = std::make_shared<Function>(method, env, method->name.lexeme == "init");
     methods[method->name.lexeme] = function;
@@ -425,7 +425,7 @@ typeRuntimeValue ClassInstance::get(const Token& name) {  // Access fields in an
   if (fields.contains(name.lexeme)) return fields[name.lexeme];
   const auto& method = thisClass->findMethod(name.lexeme);
   if (method != nullptr) return method->bind(shared_from_this());
-  throw RuntimeError { name, "undefined property '" + name.lexeme + "'." };
+  throw RuntimeError { name, "undefined property '" + std::string { name.lexeme } + "'." };
 }
 
 #endif
