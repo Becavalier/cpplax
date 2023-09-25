@@ -1,9 +1,18 @@
-var a = .123;
-var b = 123.123;
-var ff = a;
-var fff = "\n!23123";
-print a;
-print b;
-print ff;
-print fff;
+class Doughnut {}
+super.cook();
+{
+  class Doughnut {
+  cook() {
+    print("Fry until golden brown.");
+  }
+}
 
+class BostonCream  {
+  cook() {
+    super.cook();
+    print("asdf");
+  }
+}
+
+BostonCream().cook();
+}

@@ -14,9 +14,9 @@
 /**
  * Visit every node in the AST to do the variable resolution.
  * 
- * - BlockStmt: create new scope.
- * - FunctionStmt: create new scope, add variables (parameters).
- * - VarStmt: add variables.
+ * - BlockStmt: new scope.
+ * - FunctionStmt: new scope, new variables (parameters).
+ * - VarStmt: new variables.
  * - VariableExpr: bind local.
  * - AssignExpr: bind local (lvalue).
  * - ThisExpr: bind "this".
@@ -63,6 +63,7 @@ struct Resolver : public ExprVisitor, public StmtVisitor {
     for (auto i = scopes.size(); i >= 1; i--) {
       if (scopes.at(i - 1).contains(name.lexeme)) {
         interpreter->resolve(expr, scopes.size() - i);
+        return;
       }
     }
   }
@@ -92,17 +93,16 @@ struct Resolver : public ExprVisitor, public StmtVisitor {
      *   var a = a;
      * }
      * 
-     * Make it an error to reference a variable in its initializer.
+     * Make it an error to reference a variable in its own initializer.
     */
     declare(stmt->name);
     if (stmt->initializer != nullptr) {
-      resolve(stmt->initializer);
+      resolve(stmt->initializer);  // Bind the variable expressions then.
     }
     define(stmt->name);
   }
   void visitFunctionStmt(std::shared_ptr<const FunctionStmt> stmt) override {
-    // Enable recursion.
-    declare(stmt->name);
+    declare(stmt->name);  // Enable recursion by defining the name before resolving the function’s body.
     define(stmt->name);
     resolveFunction(stmt, FunctionType::FUNCTION);
   };
@@ -113,9 +113,6 @@ struct Resolver : public ExprVisitor, public StmtVisitor {
     resolve(stmt->condition);
     resolve(stmt->thenBranch);
     if (stmt->elseBranch != nullptr) resolve(stmt->elseBranch);
-  }
-  void visitPrintStmt(std::shared_ptr<const PrintStmt> stmt) override {
-    resolve(stmt->expression);
   }
   void visitReturnStmt(std::shared_ptr<const ReturnStmt> stmt) override {
     if (currentFunction == FunctionType::NONE) {
@@ -136,29 +133,26 @@ struct Resolver : public ExprVisitor, public StmtVisitor {
     ClassType enclosingClass = currentClass;
     currentClass = ClassType::CLASS;
     declare(stmt->name);
-    define(stmt->name);
-    if (stmt->superClass != nullptr && stmt->name.lexeme == stmt->superClass->name.lexeme) {
-      Error::error(stmt->superClass->name, "a class can't inherit from itself.");
-    }
     if (stmt->superClass != nullptr) {
       currentClass = ClassType::SUBCLASS;
       resolve(stmt->superClass);  // Resolve the class declarations inside blocks.
+      beginScope();  // Find "super" in the parent-parent scope.
+      scopes.back()["super"] = true; 
     }
-    if (stmt->superClass != nullptr) {
-      beginScope();  // Find "super" in the parent parent scope.
-      scopes.back()["super"] = true;
-    }
+    // Add a scope for holding "this" (in the closure scope).
     beginScope();
     scopes.back()["this"] = true;
+     // The method name would be dynamically dispatched, no need to store it in the context map.
     for (const auto& method : stmt->methods) {
       auto declaration = FunctionType::METHOD;
-      if (method->name.lexeme == "init") {
+      if (method->name.lexeme == "init") { 
         declaration = FunctionType::INITIALIZER;
       }
       resolveFunction(method, declaration);
     }
     endScope();
     if (stmt->superClass != nullptr) endScope();
+    define(stmt->name);
     currentClass = enclosingClass;
   }
   typeRuntimeValue visitGetExpr(std::shared_ptr<const GetExpr> expr) override {
@@ -166,10 +160,9 @@ struct Resolver : public ExprVisitor, public StmtVisitor {
     return std::monostate {};
   }
   typeRuntimeValue visitVariableExpr(std::shared_ptr<const VariableExpr> expr) override { 
-    // Check if the variable is being accessed inside its own initializer.
     if (!scopes.empty()) {
       const auto& exist = scopes.back().find(expr->name.lexeme);
-      if (exist != scopes.back().end() && !exist->second) {
+      if (exist != scopes.back().end() && !exist->second) {  // Check if the variable is being accessed inside its own initializer.
         Error::error(expr->name, "can't read local variable in its own initializer.");
       }
     }
@@ -177,7 +170,7 @@ struct Resolver : public ExprVisitor, public StmtVisitor {
     return std::monostate {};
   }
   typeRuntimeValue visitAssignExpr(std::shared_ptr<const AssignExpr> expr) override {
-    resolve(expr->value);
+    resolve(expr->value);  // Resolve the value expression.
     resolveLocal(expr, expr->name);
     return std::monostate {};
   }
@@ -221,7 +214,7 @@ struct Resolver : public ExprVisitor, public StmtVisitor {
     } else if (currentClass != ClassType::SUBCLASS) {
       Error::error(expr->keyword, "can't use 'super' in a class with no superclass.");
     }
-    resolveLocal(expr, expr->keyword);
+    resolveLocal(expr, expr->keyword);  // Act as a variable expression at runtime.
     return std::monostate {};
   }
   typeRuntimeValue visitThisExpr(std::shared_ptr<const ThisExpr> expr) override {

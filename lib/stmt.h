@@ -8,7 +8,6 @@
 #include "./expr.h"
 
 struct ExpressionStmt;
-struct PrintStmt;
 struct VarStmt;
 struct BlockStmt;
 struct IfStmt;
@@ -19,7 +18,6 @@ struct ClassStmt;
 
 struct StmtVisitor {
   virtual void visitExpressionStmt(std::shared_ptr<const ExpressionStmt>) = 0;
-  virtual void visitPrintStmt(std::shared_ptr<const PrintStmt>) = 0;
   virtual void visitVarStmt(std::shared_ptr<const VarStmt>) = 0;
   virtual void visitBlockStmt(std::shared_ptr<const BlockStmt>) = 0;
   virtual void visitIfStmt(std::shared_ptr<const IfStmt>) = 0;
@@ -45,14 +43,6 @@ struct ExpressionStmt : public Stmt, public std::enable_shared_from_this<Express
   }
 };
 
-struct PrintStmt : public Stmt, public std::enable_shared_from_this<PrintStmt> {
-  const Expr::sharedExprPtr expression;
-  explicit PrintStmt(Expr::sharedExprPtr expression) : expression(expression) {}
-  void accept(StmtVisitor* visitor) override {
-    visitor->visitPrintStmt(shared_from_this());
-  }
-};
-
 struct VarStmt : public Stmt, public std::enable_shared_from_this<VarStmt> {
   const Token& name;
   const Expr::sharedExprPtr initializer;
@@ -63,7 +53,7 @@ struct VarStmt : public Stmt, public std::enable_shared_from_this<VarStmt> {
 };
 
 struct BlockStmt : public Stmt, public std::enable_shared_from_this<BlockStmt> {
-  const std::vector<sharedStmtPtr> statements;
+  std::vector<sharedStmtPtr> statements;  // Make it mtable for supporting syntax sugar.
   explicit BlockStmt(const std::vector<sharedStmtPtr>& statements) : statements(statements) {}
   void accept(StmtVisitor* visitor) override {
     visitor->visitBlockStmt(shared_from_this());
@@ -90,7 +80,7 @@ struct WhileStmt : public Stmt, public std::enable_shared_from_this<WhileStmt> {
 };
 
 struct FunctionStmt : public Stmt, public std::enable_shared_from_this<FunctionStmt> {
-  const Token& name;
+  const Token& name;  // Function name.
   const std::vector<std::reference_wrapper<const Token>> parames;
   const std::vector<sharedStmtPtr> body;
   FunctionStmt(const Token& name, const std::vector<std::reference_wrapper<const Token>>& parames, const std::vector<sharedStmtPtr>& body) : name(name), parames(parames), body(body) {}
@@ -109,9 +99,9 @@ struct ReturnStmt : public Stmt, public std::enable_shared_from_this<ReturnStmt>
 };
 
 struct ClassStmt : public Stmt, public std::enable_shared_from_this<ClassStmt> {
-  const Token& name;
-  const std::vector<std::shared_ptr<FunctionStmt>> methods;
-  const std::shared_ptr<VariableExpr> superClass;
+  const Token& name;  // Class name.
+  const std::vector<std::shared_ptr<FunctionStmt>> methods;  // Methods (name, parameter list, body).
+  const std::shared_ptr<VariableExpr> superClass;  // As a "VariableExpr", which would be resolved by resolver.
   ClassStmt(const Token& name, const std::vector<std::shared_ptr<FunctionStmt>>& methods, std::shared_ptr<VariableExpr> superClass) : name(name), methods(methods), superClass(superClass) {}
   void accept(StmtVisitor* visitor) override {
     visitor->visitClassStmt(shared_from_this());

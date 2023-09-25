@@ -121,7 +121,7 @@ struct UnaryExpr : public Expr, public std::enable_shared_from_this<UnaryExpr> {
 
 struct GetExpr : public Expr, public std::enable_shared_from_this<GetExpr> {
   const Token& name;  // The property name that is being accessed (identifier).
-  const sharedExprPtr obj;  // The "primary" (callee).
+  const sharedExprPtr obj;  // The callee (primary).
   GetExpr(const Token& name, sharedExprPtr obj) : name(name), obj(obj) {}
   typeRuntimeValue accept(ExprVisitor* visitor) override {
     return visitor->visitGetExpr(shared_from_this());
@@ -152,53 +152,6 @@ struct SuperExpr : public Expr, public std::enable_shared_from_this<SuperExpr> {
   explicit SuperExpr(const Token& keyword, const Token& method) : keyword(keyword), method(method) {}
   typeRuntimeValue accept(ExprVisitor* visitor) override {
     return visitor->visitSuperExpr(shared_from_this());
-  }
-};
-
-
-// Common AST traverser.
-class ExprPrinter : public ExprVisitor, public std::enable_shared_from_this<ExprPrinter> {
-  int indentCounter = 2;
-  void formatOutputAST(const std::string_view str) {
-    auto curr = str.cbegin();
-    while ((curr++) != str.cend()) {
-      switch (*curr) {
-        case '(': {
-          std::cout << '\n';
-          for (int i = indentCounter; i > 0; i--) std::cout << ' ';
-          indentCounter += 2;
-          break;
-        }
-      }
-      std::cout << *curr;
-    }
-  }
-  template<typename... Ts>
-  std::string parenthesize(const std::string_view name, const Ts&... args) {
-    std::ostringstream oss;
-    oss << '(' << name;
-    ([&](const auto& arg) -> void {
-      oss << ' ' << std::get<std::string_view>(arg->accept(this));
-    }(args), ...);
-    oss << ')';
-    return oss.str();
-  }
-  typeRuntimeValue visitBinaryExpr(std::shared_ptr<const BinaryExpr> expr) override {
-    return parenthesize(expr->op.lexeme, expr->left, expr->right);
-  }
-  typeRuntimeValue visitLiteralExpr(std::shared_ptr<const LiteralExpr> expr) override {
-    return stringifyVariantValue(expr->value);
-  }
-  typeRuntimeValue visitGroupingExpr(std::shared_ptr<const GroupingExpr> expr) override {
-    return parenthesize("group", expr->expression);
-  }
-  typeRuntimeValue visitUnaryExpr(std::shared_ptr<const UnaryExpr> expr) override {
-    return parenthesize(expr->op.lexeme, expr->right);
-  }
- public:
-  void print(Expr::sharedExprPtr expr) {
-    const auto str = std::get<std::string_view>(expr->accept(this));
-    formatOutputAST(str);
   }
 };
 

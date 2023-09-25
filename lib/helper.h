@@ -20,6 +20,11 @@ auto enumAsInteger(Enumeration const value) -> typename std::underlying_type<Enu
   return static_cast<typename std::underlying_type<Enumeration>::type>(value);
 }
 
+inline bool isDoubleEqual(double x, double y) {
+  const auto epsilon = std::numeric_limits<double>::epsilon();
+  return std::abs(x - y) <= epsilon * std::abs(x);
+}
+
 template<typename T>
 std::string stringifyVariantValue(const T& literal) {
   static_assert(is_variant_v<T>);
@@ -30,7 +35,7 @@ std::string stringifyVariantValue(const T& literal) {
       std::ostringstream oss;
       double fraction, integer;
       fraction = modf(arg , &integer);
-      oss << std::fixed << std::setprecision(fraction == 0 ? 0 : 9) << arg;
+      oss << std::fixed << std::setprecision(isDoubleEqual(fraction, 0) ? 0 : 9) << arg;
       const std::string& str = oss.str();
       return str.substr(0, str.find_last_not_of('0') + 1);
     } else if constexpr (std::is_same_v<K, bool>) {
@@ -46,9 +51,5 @@ std::string stringifyVariantValue(const T& literal) {
 }
 
 std::string unescapeStr(const std::string&);
-inline bool isDoubleEqual(double x, double y) {
-  const auto epsilon = std::numeric_limits<double>::epsilon();
-  return std::abs(x - y) <= epsilon * std::abs(x);
-}
 
 #endif

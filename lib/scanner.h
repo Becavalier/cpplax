@@ -105,6 +105,7 @@ class Scanner {
       case '+': addToken(TokenType::PLUS); break;
       case ';': addToken(TokenType::SEMICOLON); break;
       case '*': addToken(TokenType::STAR); break; 
+      // Maximal munch.
       case '!': addToken(forwardMatch('=') ? TokenType::BANG_EQUAL : TokenType::BANG); break;
       case '=': addToken(forwardMatch('=') ? TokenType::EQUAL_EQUAL : TokenType::EQUAL); break;
       case '<': addToken(forwardMatch('=') ? TokenType::LESS_EQUAL : TokenType::LESS); break;

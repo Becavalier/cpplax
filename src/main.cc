@@ -27,11 +27,7 @@ struct Lax {
 
     if (Error::hadError) return;
 
-    /**
-     * Parsing
-     * 1. The parser would throw as many syntax errors as it knows, and exit only after this.
-     * 2. 
-    */
+    // Parsing.
     Parser parser { tokens };
     const auto ast = parser.parse();
 

@@ -11,7 +11,7 @@ struct RuntimeError : public std::exception {
   const Token& token;
   const std::string msg;
  public:
-  RuntimeError(const Token& token, const std::string msg) : token(token), msg(msg) {}
+  RuntimeError(const Token& token, const std::string& msg) : token(token), msg(msg) {}
   const char* what(void) const noexcept {
     return msg.data();
   }
@@ -30,7 +30,7 @@ struct Error {
     hadError = true;
   }
   static void error(const Token& token, const std::string_view msg) {
-    report(token.line, token.type == TokenType::SOURCE_EOF ? "at end" : "at '" + std::string { token.lexeme } + "'", msg);
+    report(token.line, token.type == TokenType::SOURCE_EOF ? "end" : "'" + std::string { token.lexeme } + "'", msg);
   }
   static void error(int line, const std::string_view msg) {
     report(line, "", msg);
