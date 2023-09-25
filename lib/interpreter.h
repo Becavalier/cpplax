@@ -1,6 +1,14 @@
 #ifndef	_INTERPRETER_H
 #define	_INTERPRETER_H
 
+/**
+ * This is the implementation of a AST tree-walking interpreter.
+ * 
+ * 1. Overhead is high due to the dynamic dispatch of each "visit method".
+ * 2. Sprinkling data across the heap in a loosely connected web of objects does bad things for spatial locality.
+ * 3. Not memory-efficient because of the way of AST nodes' representation in memory.
+*/
+
 #include <memory>
 #include <vector>
 #include <string>

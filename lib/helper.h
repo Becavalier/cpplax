@@ -5,7 +5,6 @@
 #include <variant>
 #include <string>
 #include <sstream>
-#include <cmath>
 #include <limits>
 #include <memory>
 #include <ios>
@@ -33,11 +32,10 @@ std::string stringifyVariantValue(const T& literal) {
     using K = std::decay_t<decltype(arg)>;
     if constexpr (std::is_same_v<K, double>) {
       std::ostringstream oss;
-      double fraction, integer;
-      fraction = modf(arg , &integer);
-      oss << std::fixed << std::setprecision(isDoubleEqual(fraction, 0) ? 0 : 9) << arg;
+      oss << std::fixed << std::setprecision(9) << arg;
       const std::string& str = oss.str();
-      return str.substr(0, str.find_last_not_of('0') + 1);
+      const std::string& strWithoutZero = oss.str().substr(0, str.find_last_not_of('0') + 1);
+      return strWithoutZero.back() == '.' ? str.substr(0, strWithoutZero.size() - 1) : strWithoutZero;
     } else if constexpr (std::is_same_v<K, bool>) {
       return std::string { arg ? "true" : "false" };
     } else if constexpr (std::is_same_v<K, std::string_view>) {
