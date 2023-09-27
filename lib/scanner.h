@@ -16,7 +16,44 @@ class Scanner {
   std::vector<Token> tokens;
   std::string::const_iterator start;  // Points to the first char in the lexeme.
   std::string::const_iterator current;  // Points at the character currently being considered.
-  static const typeKeywordList keywords;
+  TokenType checkKeyword(size_t forwardStep, std::string_view rest, TokenType type) const {
+    const auto scanStart = start + forwardStep;
+    return current == scanStart + rest.length() && std::string_view { scanStart, current } == rest ? type : TokenType::IDENTIFIER;
+  }
+  TokenType identifierType(void) const {  // We identify identifier with a trie structure.
+    switch (*start) {
+      case 'a': return checkKeyword(1, "nd", TokenType::AND);
+      case 'c': return checkKeyword(1, "lass", TokenType::CLASS);
+      case 'e': return checkKeyword(1, "lse", TokenType::ELSE);
+      case 'f': {
+        if (current - start > 1) {
+          switch (*(start + 1)) {
+            case 'a': return checkKeyword(2, "lse", TokenType::FALSE);
+            case 'o': return checkKeyword(2, "r", TokenType::FOR);
+            case 'n': return TokenType::FN;
+          }
+        }
+        break;
+      }
+      case 'i': return checkKeyword(1, "f", TokenType::IF);
+      case 'n': return checkKeyword(1, "il", TokenType::NIL);
+      case 'o': return checkKeyword(1, "r", TokenType::OR);
+      case 'r': return checkKeyword(1, "eturn", TokenType::RETURN);
+      case 's': return checkKeyword(1, "uper", TokenType::SUPER);
+      case 't': {
+        if (current - start > 1) {
+          switch (*(start + 1)) {
+            case 'h': return checkKeyword(2, "is", TokenType::THIS);
+            case 'r': return checkKeyword(2, "ue", TokenType::TRUE);
+          }
+        }
+        break;
+      }
+      case 'v': return checkKeyword(1, "ar", TokenType::VAR);
+      case 'w': return checkKeyword(1, "hile", TokenType::WHILE);
+    }
+    return TokenType::IDENTIFIER;
+  }
  public:
   explicit Scanner(const std::string& code) : source(code) {};
   bool isAtEnd(void) const {
@@ -84,9 +121,8 @@ class Scanner {
   void scanIdentifier(void) {
     while (!isAtEnd() && isAlphaNumeric(*current)) advance();
     // Check if it's a keyword.
-    auto text = std::string_view { start, current };
-    auto type = Scanner::keywords.find(text);
-    addToken(type == Scanner::keywords.end() ? TokenType::IDENTIFIER : type->second);
+    auto type = identifierType();
+    addToken(type);
   }
   void scanToken(void) {
     char c = advance();

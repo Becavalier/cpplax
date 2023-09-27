@@ -23,11 +23,11 @@
  * 
 */
 struct Resolver : public ExprVisitor, public StmtVisitor {
-  Interpreter* interpreter;
+  Interpreter& interpreter;
   FunctionType currentFunction = FunctionType::NONE;
   ClassType currentClass = ClassType::NONE;
   std::vector<typeScopeRecord> scopes {};  // For tracking local block scopes.
-  explicit Resolver(Interpreter* interpreter) : interpreter(interpreter) {}
+  explicit Resolver(Interpreter& interpreter) : interpreter(interpreter) {}
   void resolve(Stmt::sharedStmtPtr stmt) {
     stmt->accept(this);
   } 
@@ -62,7 +62,7 @@ struct Resolver : public ExprVisitor, public StmtVisitor {
     // Start at the innermost scope and work outwards, looking in each map for a matching name.
     for (auto i = scopes.size(); i >= 1; i--) {
       if (scopes.at(i - 1).contains(name.lexeme)) {
-        interpreter->resolve(expr, scopes.size() - i);
+        interpreter.resolve(expr, scopes.size() - i);
         return;
       }
     }

@@ -4,8 +4,12 @@
 #include <variant>
 #include <string>
 #include <memory>
+#include <vector>
 #include <unordered_map>
 
+/**
+ * Interpreter Related Types
+*/
 enum class TokenType : uint8_t {
   // Single-character tokens.
   LEFT_PAREN, 
@@ -51,7 +55,8 @@ enum class TokenType : uint8_t {
   TRUE, 
   VAR, 
   WHILE, 
-  SOURCE_EOF
+  SOURCE_EOF,
+  ERROR,
 };
 
 enum class FunctionType : uint8_t {
@@ -78,5 +83,29 @@ using typeRuntimeValue = std::variant<
   bool>;
 using typeKeywordList = std::unordered_map<std::string_view, TokenType>;
 using typeScopeRecord = std::unordered_map<std::string_view, bool>;
+
+/**
+ * VM Related Types
+*/
+enum OpCode : uint8_t {
+  OP_CONSTANT,  // [OpCode, Constant Index (uint8_t)].
+  // OP_CONSTANT_LONG,
+  OP_RETURN,  // [OpCode].
+  OP_NEGATE, 
+  OP_ADD,
+  OP_SUBTRACT,
+  OP_MULTIPLY,
+  OP_DIVIDE,
+};
+
+enum VMResult : uint8_t {
+  INTERPRET_OK,
+  INTERPRET_COMPILE_ERROR,
+  INTERPRET_RUNTIME_ERROR,
+};
+
+using typeVMCodeArray = std::vector<uint8_t>;
+using typeVMValue = double;
+using typeVMValueArray = std::vector<typeVMValue>;
 
 #endif

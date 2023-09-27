@@ -9,10 +9,11 @@
 #include <memory>
 #include <ios>
 #include <iomanip>
+#include <cstdint>
 
-template<typename T> struct is_variant : std::false_type {};
-template<typename ...Args> struct is_variant<std::variant<Args...>> : std::true_type {};
-template<typename T> inline constexpr bool is_variant_v = is_variant<T>::value;
+template<typename T> struct isVariant : std::false_type {};
+template<typename ...Args> struct isVariant<std::variant<Args...>> : std::true_type {};
+template<typename T> inline constexpr bool isVariantV = isVariant<T>::value;
 
 template <typename Enumeration>
 auto enumAsInteger(Enumeration const value) -> typename std::underlying_type<Enumeration>::type {
@@ -26,7 +27,7 @@ inline bool isDoubleEqual(double x, double y) {
 
 template<typename T>
 std::string stringifyVariantValue(const T& literal) {
-  static_assert(is_variant_v<T>);
+  static_assert(isVariantV<T>);
   if (literal.valueless_by_exception()) return "nil";
   return std::visit([](auto&& arg) {
     using K = std::decay_t<decltype(arg)>;
