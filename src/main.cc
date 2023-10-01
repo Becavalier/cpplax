@@ -51,7 +51,7 @@ struct Lax {
       Compiler compiler { tokens };
       const auto chunk = compiler.compile();  // Compile into byte codes.
       if (Error::hadError) return;
-      
+
       VM vm { chunk };
       vm.interpret();
     }

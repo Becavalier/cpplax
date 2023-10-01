@@ -21,22 +21,22 @@ struct Error {
   static bool hadError;
   static bool hadRuntimeError;
   static void report(
-    int line, 
+    size_t line, 
     const std::string_view where, 
     const std::string_view msg) {
-    std::cerr << "[Line " << line << "] Error";
-    if (!where.empty()) std::cerr << ": at " << where;
-    std::cerr << ", " << msg << std::endl;
+    std::cerr << "[Line " << line << "] Error: ";
+    if (!where.empty()) std::cerr << "at \"" << where << "\"" << ", ";
+    std::cerr << msg << std::endl;
     hadError = true;
   }
   static void error(const Token& token, const std::string_view msg) {
     report(token.line, token.type == TokenType::SOURCE_EOF ? "end" : "'" + std::string { token.lexeme } + "'", msg);
   }
-  static void error(int line, const std::string_view msg) {
+  static void error(size_t line, const std::string_view msg) {
     report(line, "", msg);
   }
-  static void error(int line, char c, const std::string_view msg) {
-    report(line, std::string { c }, msg);
+  static void error(size_t line, std::string_view where, const std::string_view msg) {
+    report(line, where, msg);
   }
   static void runtimeError(const RuntimeError& err) {
     error(err.token, err.what());

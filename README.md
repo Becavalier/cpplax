@@ -75,7 +75,12 @@ arguments      → expression ( "," expression )* ;
 
 ### Improvements
 
-- [ ] Look up variables via indices in the corresponding environment.
+- [ ] Make the scanner "lazy" and spit out a token every time the parser requires (memory friendly).
+- [ ] [Interpreter] Look up variables via indices in the corresponding environment.
+
+
+### Features
+
 - [ ] Support "break" and "continue".
 - [ ] Support "++" and "--" operators.
 - [ ] Support bitwise operators.

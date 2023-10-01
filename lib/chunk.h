@@ -18,15 +18,15 @@ struct Debugger;
 struct Chunk {
   friend struct Debugger;
   typeVMCodeArray code;  // A heterogeneous storage (saving both opcodes and operands).
-  typeVMValueArray constants;
+  typeRTNumericValueArray constants;
   std::vector<size_t> lines;  // Save line information with run-length encoding.
   Chunk() = default;
-  void addCode(const std::vector<std::pair<uint8_t, size_t>>& snapshot) {
+  void addCode(const std::vector<std::pair<OpCodeType, size_t>>& snapshot) {
     for (auto it = snapshot.cbegin(); it != snapshot.cend(); ++it) {
       addCode(it->first, it->second);
     }
   }
-  void addCode(uint8_t byte, size_t line) {
+  void addCode(OpCodeType byte, size_t line) {
     try {
       code.push_back(byte);
       if (lines.size() == 0 || lines.back() != line) {
@@ -38,7 +38,11 @@ struct Chunk {
       std::exit(EXIT_FAILURE);
     }
   }
-  size_t getLine(size_t codeIdx) const {
+  size_t getLine(const typeVMCodeArray::const_iterator& codeIt) const {
+    const auto codeIdx = static_cast<size_t>(codeIt - code.cbegin());
+    return getLine(codeIdx);
+  }
+  size_t getLine(const size_t codeIdx) const {
     for (auto it = lines.cbegin(); it != lines.cend(); it += 2) {
       if (codeIdx <= *it) {
         return *(it + 1);
@@ -46,7 +50,7 @@ struct Chunk {
     }
     return 0;
   }
-  size_t addConstant(typeVMValue v) {
+  size_t addConstant(typeRTNumericValue v) {
     try {
       constants.push_back(v);
     } catch (const std::bad_alloc& e) {
@@ -61,7 +65,7 @@ struct Chunk {
 };
 
 struct ChunkDebugger {
-  static void printValue(typeVMValue v) {
+  static void printValue(typeRTNumericValue v) {
     printf("%g", v);
   }
   static auto simpleInstruction(const char* name, const typeVMCodeArray::const_iterator& offset) {
@@ -76,7 +80,7 @@ struct ChunkDebugger {
     return offset + 2;
   }
   static auto disassembleInstruction(const Chunk& chunk, const typeVMCodeArray::const_iterator& offset) {
-    const auto offsetPos = offset - chunk.code.begin();
+    const auto offsetPos = offset - chunk.code.cbegin();
     printf("%04ld ", offsetPos);  // Print the offset location.
     if (offsetPos > 0 && chunk.getLine(offsetPos) == chunk.getLine(offsetPos - 1)) {
       printf("   | ");
@@ -108,10 +112,11 @@ struct ChunkDebugger {
   static void disassembleChunk(const Chunk& chunk, const char* name) {
     std::cout << "== " << name << " ==\n";
     const auto& code = chunk.code;
-    for (auto offset = code.cbegin(); offset != code.cend();) {
+    auto offset = code.cbegin();
+    while (offset != code.cend()) {
       offset = disassembleInstruction(chunk, offset);
     }
-    std::cout << std::endl;  // Flush output.
+    std::cout << std::endl;
   }
 };
 

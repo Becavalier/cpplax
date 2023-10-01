@@ -7,10 +7,12 @@
 #include <vector>
 #include <unordered_map>
 
+using typeRTNumericValue= double;
+
 /**
  * Interpreter Related Types
 */
-enum class TokenType : uint8_t {
+enum TokenType : uint8_t {
   // Single-character tokens.
   LEFT_PAREN, 
   RIGHT_PAREN, 
@@ -57,6 +59,7 @@ enum class TokenType : uint8_t {
   WHILE, 
   SOURCE_EOF,
   ERROR,
+  TOTAL,
 };
 
 enum class FunctionType : uint8_t {
@@ -79,7 +82,7 @@ using typeRuntimeValue = std::variant<
   std::shared_ptr<Invokable>, 
   std::shared_ptr<ClassInstance>,
   std::string_view, 
-  double, 
+  typeRTNumericValue, 
   bool>;
 using typeKeywordList = std::unordered_map<std::string_view, TokenType>;
 using typeScopeRecord = std::unordered_map<std::string_view, bool>;
@@ -87,7 +90,8 @@ using typeScopeRecord = std::unordered_map<std::string_view, bool>;
 /**
  * VM Related Types
 */
-enum OpCode : uint8_t {
+using OpCodeType = uint8_t;
+enum OpCode : OpCodeType {
   OP_CONSTANT,  // [OpCode, Constant Index (uint8_t)].
   // OP_CONSTANT_LONG,
   OP_RETURN,  // [OpCode].
@@ -105,7 +109,6 @@ enum VMResult : uint8_t {
 };
 
 using typeVMCodeArray = std::vector<uint8_t>;
-using typeVMValue = double;
-using typeVMValueArray = std::vector<typeVMValue>;
+using typeRTNumericValueArray = std::vector<typeRTNumericValue>;
 
 #endif

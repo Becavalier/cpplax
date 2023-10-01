@@ -11,7 +11,7 @@
 #include "./compiler.h"
 
 struct VM {
-  using typeVMStack = std::array<typeVMValue, STACK_MAX>;
+  using typeVMStack = std::array<typeRTNumericValue, STACK_MAX>;
   const Chunk& chunk;
   typeVMStack stack;
   typeVMCodeArray::const_iterator ip;  // Points to the instruction about to be executed.
@@ -21,11 +21,11 @@ struct VM {
   auto top(void) {
     return stackTop - 1;
   }
-  void push(typeVMValue v) {
+  void push(typeRTNumericValue v) {
     *stackTop = v;
     ++stackTop;
   }
-  typeVMValue pop(void) {
+  typeRTNumericValue pop(void) {
     --stackTop;
     return *stackTop;
   }
@@ -43,7 +43,7 @@ struct VM {
       } while (false)
     while (true) {
 #ifdef DEBUG_TRACE_EXECUTION
-      printf("          ");
+      printf("          ■ ");
       for (auto it = stack.cbegin(); it < stackTop; it++) {
         printf("[ ");
         ChunkDebugger::printValue(*it);

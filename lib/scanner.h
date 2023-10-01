@@ -20,7 +20,7 @@ class Scanner {
     const auto scanStart = start + forwardStep;
     return current == scanStart + rest.length() && std::string_view { scanStart, current } == rest ? type : TokenType::IDENTIFIER;
   }
-  TokenType identifierType(void) const {  // We identify identifier with a trie structure.
+  TokenType identifierType(void) const {  // Identify identifier with a trie (a special kind of DFA).
     switch (*start) {
       case 'a': return checkKeyword(1, "nd", TokenType::AND);
       case 'c': return checkKeyword(1, "lass", TokenType::CLASS);
@@ -77,8 +77,7 @@ class Scanner {
   void addToken(TokenType type, Token::typeLiteral literal) {
     tokens.emplace_back(type, std::string_view { start, current }, literal, line);
   }
-  bool forwardMatch(char expected) {
-    // Look ahead to see if it could match another token type (the combination pair).
+  bool forwardMatch(char expected) {  // Look ahead to see if it could match another token type (the combination pair).
     if (isAtEnd()) return false;
     if (*current != expected) return false;
     ++current;
@@ -125,7 +124,7 @@ class Scanner {
     addToken(type);
   }
   void scanToken(void) {
-    char c = advance();
+    const auto c = advance();
     switch (c) {
       case '(': addToken(TokenType::LEFT_PAREN); break;
       case ')': addToken(TokenType::RIGHT_PAREN); break;
@@ -148,8 +147,7 @@ class Scanner {
       case '>': addToken(forwardMatch('=') ? TokenType::GREATER_EQUAL : TokenType::GREATER); break;
       case '/': {
         if (forwardMatch('/')) {
-          // A comment goes until the end of the line, then we skip the current line.
-          while (!isAtEnd() && *current != '\n') {
+          while (!isAtEnd() && *current != '\n') {  // A comment goes until the end of the line, then we skip the current line.
             advance();
           }
         } else if (forwardMatch('*')) {
@@ -178,8 +176,9 @@ class Scanner {
         } else if (isAlpha(c)) {
           scanIdentifier();
         } else {
-          // TODO: coalescing a run of invalid characters into a single error.
-          Error::error(line, c, "unexpected character.");
+          // Multiple consecutive invalid characters are merged into a single error.
+          while (!isAtEnd() && *current != ' ') advance();
+          Error::error(line, std::string_view{ start, current }, "unexpected characters.");
         }
         break;
       }
