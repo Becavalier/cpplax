@@ -7,11 +7,8 @@
 #include <vector>
 #include <unordered_map>
 
-using typeRTNumericValue= double;
+using typeRuntimeNumericValue= double;
 
-/**
- * Interpreter Related Types
-*/
 enum TokenType : uint8_t {
   // Single-character tokens.
   LEFT_PAREN, 
@@ -58,9 +55,12 @@ enum TokenType : uint8_t {
   VAR, 
   WHILE, 
   SOURCE_EOF,
-  ERROR,
   TOTAL,
 };
+
+/**
+ * Interpreter Related Types
+*/
 
 enum class FunctionType : uint8_t {
   NONE,
@@ -77,13 +77,6 @@ enum class ClassType : uint8_t {
 
 struct Invokable;
 struct ClassInstance;
-using typeRuntimeValue = std::variant<
-  std::monostate, 
-  std::shared_ptr<Invokable>, 
-  std::shared_ptr<ClassInstance>,
-  std::string_view, 
-  typeRTNumericValue, 
-  bool>;
 using typeKeywordList = std::unordered_map<std::string_view, TokenType>;
 using typeScopeRecord = std::unordered_map<std::string_view, bool>;
 
@@ -100,15 +93,31 @@ enum OpCode : OpCodeType {
   OP_SUBTRACT,
   OP_MULTIPLY,
   OP_DIVIDE,
+  OP_NIL,
+  OP_TRUE,
+  OP_FALSE,
+  OP_NOT,
+  OP_EQUAL,
+  OP_GREATER,
+  OP_LESS,
 };
 
-enum VMResult : uint8_t {
+enum class VMResult : uint8_t {
   INTERPRET_OK,
   INTERPRET_COMPILE_ERROR,
   INTERPRET_RUNTIME_ERROR,
 };
 
 using typeVMCodeArray = std::vector<uint8_t>;
-using typeRTNumericValueArray = std::vector<typeRTNumericValue>;
+using typeRuntimeNumericValueArray = std::vector<typeRuntimeNumericValue>;
+
+// Runtime value.
+using typeRuntimeValue = std::variant<
+  std::monostate, 
+  std::shared_ptr<Invokable>, 
+  std::shared_ptr<ClassInstance>,
+  std::string_view, 
+  typeRuntimeNumericValue, 
+  bool>;
 
 #endif

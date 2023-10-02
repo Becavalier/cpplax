@@ -74,7 +74,7 @@ class Scanner {
   void addToken(TokenType type) {
     addToken(type, std::monostate {});
   }
-  void addToken(TokenType type, Token::typeLiteral literal) {
+  void addToken(TokenType type, typeRuntimeValue literal) {
     tokens.emplace_back(type, std::string_view { start, current }, literal, line);
   }
   bool forwardMatch(char expected) {  // Look ahead to see if it could match another token type (the combination pair).

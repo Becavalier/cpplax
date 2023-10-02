@@ -18,7 +18,7 @@ struct Debugger;
 struct Chunk {
   friend struct Debugger;
   typeVMCodeArray code;  // A heterogeneous storage (saving both opcodes and operands).
-  typeRTNumericValueArray constants;
+  typeRuntimeNumericValueArray constants;
   std::vector<size_t> lines;  // Save line information with run-length encoding.
   Chunk() = default;
   void addCode(const std::vector<std::pair<OpCodeType, size_t>>& snapshot) {
@@ -28,12 +28,12 @@ struct Chunk {
   }
   void addCode(OpCodeType byte, size_t line) {
     try {
-      code.push_back(byte);
       if (lines.size() == 0 || lines.back() != line) {
-        lines.insert(lines.end(), { code.size() == 0 ? 0 : code.size() - 1, line });
+        lines.insert(lines.end(), { code.size() == 0 ? 0 : code.size(), line });
       } else {
         *(lines.end() - 2) += 1;  // Increase the upper bound of the length unit.
       }
+      code.push_back(byte);
     } catch (const std::bad_alloc& e) {
       std::exit(EXIT_FAILURE);
     }
@@ -50,7 +50,7 @@ struct Chunk {
     }
     return 0;
   }
-  size_t addConstant(typeRTNumericValue v) {
+  size_t addConstant(typeRuntimeNumericValue v) {
     try {
       constants.push_back(v);
     } catch (const std::bad_alloc& e) {
@@ -65,8 +65,8 @@ struct Chunk {
 };
 
 struct ChunkDebugger {
-  static void printValue(typeRTNumericValue v) {
-    printf("%g", v);
+  static void printValue(const typeRuntimeValue& v) {
+    std::cout << stringifyVariantValue(v);
   }
   static auto simpleInstruction(const char* name, const typeVMCodeArray::const_iterator& offset) {
     std::cout << name << std::endl;
@@ -89,20 +89,20 @@ struct ChunkDebugger {
     }
     const auto instruction = *offset;
     switch (instruction) {  // Instructions have different sizes. 
-      case OpCode::OP_CONSTANT:
-        return constantInstruction("OP_CONSTANT", chunk, offset);
-      case OpCode::OP_ADD:
-        return simpleInstruction("OP_ADD", offset);
-      case OpCode::OP_SUBTRACT:
-        return simpleInstruction("OP_SUBTRACT", offset);
-      case OpCode::OP_MULTIPLY:
-        return simpleInstruction("OP_MULTIPLY", offset);
-      case OpCode::OP_DIVIDE:
-        return simpleInstruction("OP_DIVIDE", offset);
-      case OpCode::OP_NEGATE: 
-        return simpleInstruction("OP_NEGATE", offset);
-      case OpCode::OP_RETURN:
-        return simpleInstruction("OP_RETURN", offset);
+      case OpCode::OP_CONSTANT: return constantInstruction("OP_CONSTANT", chunk, offset);
+      case OpCode::OP_NIL: return simpleInstruction("OP_NIL", offset);
+      case OpCode::OP_TRUE: return simpleInstruction("OP_TRUE", offset);
+      case OpCode::OP_FALSE: return simpleInstruction("OP_FALSE", offset);
+      case OpCode::OP_ADD: return simpleInstruction("OP_ADD", offset);
+      case OpCode::OP_SUBTRACT: return simpleInstruction("OP_SUBTRACT", offset);
+      case OpCode::OP_MULTIPLY: return simpleInstruction("OP_MULTIPLY", offset);
+      case OpCode::OP_DIVIDE: return simpleInstruction("OP_DIVIDE", offset);
+      case OpCode::OP_NEGATE:  return simpleInstruction("OP_NEGATE", offset);
+      case OpCode::OP_RETURN: return simpleInstruction("OP_RETURN", offset);
+      case OpCode::OP_NOT: return simpleInstruction("OP_NOT", offset);
+      case OpCode::OP_EQUAL: return simpleInstruction("OP_EQUAL", offset);
+      case OpCode::OP_GREATER: return simpleInstruction("OP_GREATER", offset);
+      case OpCode::OP_LESS: return simpleInstruction("OP_LESS", offset);
       default: {
         std::cout << "Unknow opcode: " << +instruction << '.' << std::endl;
         return offset + 1;

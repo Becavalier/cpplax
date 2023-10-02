@@ -95,8 +95,8 @@ struct BinaryExpr : public Expr, public std::enable_shared_from_this<BinaryExpr>
 };
 
 struct LiteralExpr :  public Expr, public std::enable_shared_from_this<LiteralExpr> {
-  const Token::typeLiteral value;
-  explicit LiteralExpr(Token::typeLiteral value) : value(value) {}
+  const typeRuntimeValue value;
+  explicit LiteralExpr(typeRuntimeValue value) : value(value) {}
   typeRuntimeValue accept(ExprVisitor* visitor) override {
     return visitor->visitLiteralExpr(shared_from_this());
   }

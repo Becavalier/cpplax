@@ -12,10 +12,10 @@
 #include "./error.h"
 
 struct Compiler;
-// using ParseFn = void (Compiler::*)();
-typedef void (Compiler::*parseFn)();
+using typeParseFn = void (Compiler::*)();
 
-enum Precedence : uint8_t {
+// All prefix operators in Lox have the same precedence.
+enum Precedence : uint8_t {  // Precedence: lowest -> highest.
   PREC_NONE,
   PREC_ASSIGNMENT,  // =
   PREC_OR,          // or
@@ -30,8 +30,8 @@ enum Precedence : uint8_t {
 };
 
 struct ParseRule {
-  parseFn prefix;
-  parseFn infix;
+  typeParseFn prefix;
+  typeParseFn infix;
   Precedence precedence;
 };
 
@@ -40,6 +40,12 @@ struct Compiler {
   const std::vector<Token>& tokens;
   std::vector<Token>::const_iterator current;
   Chunk chunk;
+  /**
+   * Rule table for "Pratt Parser". Columns are:
+   * - The function to compile a prefix expression starting with a token of that type.
+   * - The function to compile an infix expression whose left operand is followed by a token of that type.
+   * - The precedence of an infix expression that uses that token as an operator.
+  */
   const ParseRule rules[TokenType::TOTAL] = {
     [TokenType::LEFT_PAREN] = { &Compiler::grouping, nullptr, Precedence::PREC_NONE },
     [TokenType::RIGHT_PAREN] = { nullptr, nullptr, Precedence::PREC_NONE },
@@ -48,89 +54,91 @@ struct Compiler {
     [TokenType::COMMA] = { nullptr, nullptr, Precedence::PREC_NONE },
     [TokenType::DOT] = { nullptr, nullptr, Precedence::PREC_NONE },
     [TokenType::MINUS] = { &Compiler::unary, &Compiler::binary, Precedence::PREC_TERM },
-    [TokenType::PLUS] = {nullptr, &Compiler::binary, Precedence::PREC_TERM },
-    [TokenType::SEMICOLON] = {nullptr, nullptr, Precedence::PREC_NONE },
-    [TokenType::SLASH] = {nullptr, &Compiler::binary, Precedence::PREC_FACTOR },
-    [TokenType::STAR] = {nullptr, &Compiler::binary, Precedence::PREC_FACTOR },
-    [TokenType::BANG] = {nullptr, nullptr, Precedence::PREC_NONE },
-    [TokenType::BANG_EQUAL] = {nullptr, nullptr, Precedence::PREC_NONE },
-    [TokenType::EQUAL] = {nullptr, nullptr, Precedence::PREC_NONE },
-    [TokenType::EQUAL_EQUAL] = {nullptr, nullptr, Precedence::PREC_NONE },
-    [TokenType::GREATER] = {nullptr, nullptr, Precedence::PREC_NONE },
-    [TokenType::GREATER_EQUAL] = {nullptr, nullptr, Precedence::PREC_NONE },
-    [TokenType::LESS] = {nullptr, nullptr, Precedence::PREC_NONE },
-    [TokenType::LESS_EQUAL] = {nullptr, nullptr, Precedence::PREC_NONE },
-    [TokenType::IDENTIFIER] = {nullptr, nullptr, Precedence::PREC_NONE },
-    [TokenType::STRING] = {nullptr, nullptr, Precedence::PREC_NONE },
-    [TokenType::NUMBER] = {&Compiler::number, nullptr, Precedence::PREC_NONE },
-    [TokenType::AND] = {nullptr, nullptr, Precedence::PREC_NONE },
-    [TokenType::CLASS] = {nullptr, nullptr, Precedence::PREC_NONE },
-    [TokenType::ELSE] = {nullptr, nullptr, Precedence::PREC_NONE },
-    [TokenType::FALSE] = {nullptr, nullptr, Precedence::PREC_NONE },
-    [TokenType::FOR] = {nullptr, nullptr, Precedence::PREC_NONE },
-    [TokenType::FN] = {nullptr, nullptr, Precedence::PREC_NONE },
-    [TokenType::IF] = {nullptr, nullptr, Precedence::PREC_NONE },
-    [TokenType::NIL] = {nullptr, nullptr, Precedence::PREC_NONE },
-    [TokenType::OR] = {nullptr, nullptr, Precedence::PREC_NONE },
-    [TokenType::RETURN] = {nullptr, nullptr, Precedence::PREC_NONE },
-    [TokenType::SUPER] = {nullptr, nullptr, Precedence::PREC_NONE } ,
-    [TokenType::THIS] = {nullptr, nullptr, Precedence::PREC_NONE },
-    [TokenType::TRUE] = {nullptr, nullptr, Precedence::PREC_NONE },
-    [TokenType::VAR] = {nullptr, nullptr, Precedence::PREC_NONE },
-    [TokenType::WHILE] = {nullptr, nullptr, Precedence::PREC_NONE },
-    [TokenType::ERROR] = {nullptr, nullptr, Precedence::PREC_NONE },
-    [TokenType::SOURCE_EOF] = {nullptr, nullptr, Precedence::PREC_NONE },
+    [TokenType::PLUS] = { nullptr, &Compiler::binary, Precedence::PREC_TERM },
+    [TokenType::SEMICOLON] = { nullptr, nullptr, Precedence::PREC_NONE },
+    [TokenType::SLASH] = { nullptr, &Compiler::binary, Precedence::PREC_FACTOR },
+    [TokenType::STAR] = { nullptr, &Compiler::binary, Precedence::PREC_FACTOR },
+    [TokenType::BANG] = { &Compiler::unary, nullptr, Precedence::PREC_NONE },
+    [TokenType::BANG_EQUAL] = { nullptr, &Compiler::binary, Precedence::PREC_EQUALITY },
+    [TokenType::EQUAL] = { nullptr, nullptr, Precedence::PREC_NONE },
+    [TokenType::EQUAL_EQUAL] = { nullptr, &Compiler::binary, Precedence::PREC_EQUALITY },
+    [TokenType::GREATER] = { nullptr, &Compiler::binary, Precedence::PREC_COMPARISON },
+    [TokenType::GREATER_EQUAL] = { nullptr, &Compiler::binary, Precedence::PREC_COMPARISON },
+    [TokenType::LESS] = { nullptr, &Compiler::binary, Precedence::PREC_COMPARISON },
+    [TokenType::LESS_EQUAL] = { nullptr, &Compiler::binary, Precedence::PREC_COMPARISON },
+    [TokenType::IDENTIFIER] = { nullptr, nullptr, Precedence::PREC_NONE },
+    [TokenType::STRING] = { nullptr, nullptr, Precedence::PREC_NONE },
+    [TokenType::NUMBER] = { &Compiler::number, nullptr, Precedence::PREC_NONE },
+    [TokenType::AND] = { nullptr, nullptr, Precedence::PREC_NONE },
+    [TokenType::CLASS] = { nullptr, nullptr, Precedence::PREC_NONE },
+    [TokenType::ELSE] = { nullptr, nullptr, Precedence::PREC_NONE },
+    [TokenType::FALSE] = { &Compiler::literal, nullptr, Precedence::PREC_NONE },
+    [TokenType::FOR] = { nullptr, nullptr, Precedence::PREC_NONE },
+    [TokenType::FN] = { nullptr, nullptr, Precedence::PREC_NONE },
+    [TokenType::IF] = { nullptr, nullptr, Precedence::PREC_NONE },
+    [TokenType::NIL] = { &Compiler::literal, nullptr, Precedence::PREC_NONE },
+    [TokenType::OR] = { nullptr, nullptr, Precedence::PREC_NONE },
+    [TokenType::RETURN] = { nullptr, nullptr, Precedence::PREC_NONE },
+    [TokenType::SUPER] = { nullptr, nullptr, Precedence::PREC_NONE } ,
+    [TokenType::THIS] = { nullptr, nullptr, Precedence::PREC_NONE },
+    [TokenType::TRUE] = { &Compiler::literal, nullptr, Precedence::PREC_NONE },
+    [TokenType::VAR] = { nullptr, nullptr, Precedence::PREC_NONE },
+    [TokenType::WHILE] = { nullptr, nullptr, Precedence::PREC_NONE },
+    [TokenType::SOURCE_EOF] = { nullptr, nullptr, Precedence::PREC_NONE },
   };
   explicit Compiler(const std::vector<Token>& tokens) : tokens(tokens), current(tokens.cbegin()) {}
-  void consume(TokenType type, const char* msg) {
-    if ((*current).type == type) {
-      ++current;
-      return;
-    }
-    errorAtCurrent(msg);
-  }
   auto& peek(void) {
     return *current;
+  }
+  void advance(void) {
+    ++current;
   }
   auto previous(void) {
     return *(current - 1);
   }
+  void consume(TokenType type, const char* msg) {
+    if (peek().type == type) {
+      advance();
+      return;
+    }
+    errorAtCurrent(msg);
+  }
   void errorAt(const Token& token, const char* msg) {
-    if (panicMode) return;
-    panicMode = true;
+    // if (panicMode) return;
+    // panicMode = true;
     Error::error(token, msg);  // Error::hadError -> true.
   }
   void errorAtCurrent(const char* msg) {
-    errorAt(*current, msg);
+    errorAt(peek(), msg);
   }
-  void error(const char* msg) {
-    errorAt(previous(), msg);
+  void errorAtPrevious(const char* msg) {
+    errorAt(previous(), msg);  // Report an error at the location of the just consumed token.
   }
   void emitByte(OpCodeType byte) {
     chunk.addCode(byte, previous().line);
   }
-  void emitBytes(OpCodeType byteX, OpCodeType byteY) {
-    emitByte(byteX);
-    emitByte(byteY);
+  void emitByte(OpCodeType byte, size_t line) {
+    chunk.addCode(byte, line);
   }
-  void emitConstant(typeRTNumericValue value) {
+  void emitConstant(typeRuntimeNumericValue value) {
     const auto constantIdx = chunk.addConstant(value);
     if (constantIdx <= UINT8_MAX) {
-      emitBytes(OpCode::OP_CONSTANT, static_cast<OpCodeType>(constantIdx));
+      emitByte(OpCode::OP_CONSTANT);
+      emitByte(static_cast<OpCodeType>(constantIdx));
     } else {
-      error("too many constants in one chunk.");
+      errorAtPrevious("too many constants in one chunk.");
     }
   }
-  void parsePrecedence(Precedence precedence) {
-    ++current;
+  void parsePrecedence(Precedence precedence) {  // Core driving function.
+    advance();
     auto prefixRule = getRule(previous().type)->prefix;
     if (prefixRule == nullptr) {
-      error("expect expression.");
+      errorAtPrevious("expect expression.");
       return;
     }
     (this->*prefixRule)();
-    while (precedence <= getRule(peek().type)->precedence) {
-      ++current;
+    while (precedence <= getRule(peek().type)->precedence) {  // The prefix expression already compiled might be an operand for the infix operator.
+      advance();
       auto infixRule = getRule(previous().type)->infix;
       (this->*infixRule)();
     }
@@ -139,29 +147,52 @@ struct Compiler {
     return &rules[type];
   }
   void number(void) {
-    emitConstant(std::get<typeRTNumericValue>(previous().literal));
+    emitConstant(std::get<typeRuntimeNumericValue>(previous().literal));  // Number constant has been consumed.
   }
   void grouping(void) {
-    expression();
+    expression();  // The opening '(' has been consumed.
     consume(TokenType::RIGHT_PAREN, "expect ')' after expression.");
   }
-  void unary() {
-    auto opType = previous().type;
+  void unary() {  // "Prefix" expression.
+    const auto& prevToken = previous();
+    const auto line = prevToken.line;
     parsePrecedence(Precedence::PREC_UNARY);  // Compile the operand.
-    switch (opType) {
-      case TokenType::MINUS: emitByte(OpCode::OP_NEGATE); break;
-      default: return;  // Unreachable.
+    switch (prevToken.type) {
+      case TokenType::MINUS: emitByte(OpCode::OP_NEGATE, line); break;
+      case TokenType::BANG: emitByte(OpCode::OP_NOT, line); break;
+      default: return;
     }
   }
-  void binary(void) {
-    auto opType = previous().type;
-    auto rule = getRule(opType);
-    parsePrecedence(static_cast<Precedence>(rule->precedence + 1));
+  void binary(void) {  // "Infix" expression, the left operand has been consumed.
+    const auto& prevToken = previous();
+    const auto opType = prevToken.type;
+    const auto line = prevToken.line;
+    const auto rule = getRule(opType);
+    /**
+     * Each binary operator’s right-hand operand precedence is one level higher than its own, -
+     * because the binary operators are left-associative. .e.g: 
+     * 1 + 2 + 3 + 4 -> ((1 + 2) + 3) + 4.
+    */
+    parsePrecedence(static_cast<Precedence>(rule->precedence + 1)); 
     switch (opType) {
-      case TokenType::PLUS: emitByte(OpCode::OP_ADD); break;
-      case TokenType::MINUS: emitByte(OpCode::OP_SUBTRACT); break;
-      case TokenType::STAR: emitByte(OpCode::OP_MULTIPLY); break;
-      case TokenType::SLASH: emitByte(OpCode::OP_DIVIDE); break;
+      case TokenType::PLUS: emitByte(OpCode::OP_ADD, line); break;
+      case TokenType::MINUS: emitByte(OpCode::OP_SUBTRACT, line); break;
+      case TokenType::STAR: emitByte(OpCode::OP_MULTIPLY, line); break;
+      case TokenType::SLASH: emitByte(OpCode::OP_DIVIDE, line); break;
+      case TokenType::BANG_EQUAL: emitByte(OpCode::OP_EQUAL); emitByte(OpCode::OP_NOT); break;
+      case TokenType::EQUAL_EQUAL: emitByte(OpCode::OP_EQUAL); break;
+      case TokenType::GREATER: emitByte(OpCode::OP_GREATER); break;
+      case TokenType::GREATER_EQUAL: emitByte(OpCode::OP_LESS); emitByte(OpCode::OP_NOT); break;
+      case TokenType::LESS: emitByte(OpCode::OP_LESS); break;
+      case TokenType::LESS_EQUAL: emitByte(OpCode::OP_GREATER); emitByte(OpCode::OP_NOT); break;  // Not accurate under certain IEEE754 operations.
+      default: return;
+    }
+  }
+  void literal(void) {
+    switch (previous().type) {
+      case TokenType::FALSE: emitByte(OpCode::OP_FALSE); break;
+      case TokenType::TRUE: emitByte(OpCode::OP_TRUE); break;
+      case TokenType::NIL: emitByte(OpCode::OP_NIL); break;
       default: return;
     }
   }
@@ -171,12 +202,12 @@ struct Compiler {
   Chunk compile(void) {
     expression();
     consume(TokenType::SOURCE_EOF, "expect end of expression.");
-    emitByte(OpCode::OP_RETURN);
-// #ifdef DEBUG_PRINT_CODE
-//     if (!Error::hadError) {
-//       ChunkDebugger::disassembleChunk(chunk, "code");
-//     }
-// #endif   
+    emitByte(OpCode::OP_RETURN);  // End compiling.
+#ifdef DEBUG_PRINT_CODE
+    if (!Error::hadError) {
+      ChunkDebugger::disassembleChunk(chunk, "code");
+    }
+#endif   
     return chunk;
   }
 };

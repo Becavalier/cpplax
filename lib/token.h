@@ -13,12 +13,11 @@
 
 struct Token {
   friend std::ostream &operator<<(std::ostream &os, const Token &token);
-  using typeLiteral = typeRuntimeValue;
   TokenType type;
   const std::string_view lexeme;
-  const typeLiteral literal;   // Tokens aren’t entirely homogeneous either.
+  const typeRuntimeValue literal;   // Tokens aren’t entirely homogeneous either.
   size_t line;
-  Token(const TokenType& type, const std::string_view lexeme, const typeLiteral& literal, size_t line) : type(type), lexeme(lexeme), literal(literal), line(line) {}
+  Token(const TokenType& type, const std::string_view lexeme, const typeRuntimeValue& literal, size_t line) : type(type), lexeme(lexeme), literal(literal), line(line) {}
 };
 
 #endif

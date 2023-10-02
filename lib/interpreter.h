@@ -119,7 +119,7 @@ struct ClassInstance : public std::enable_shared_from_this<ClassInstance> {
     if (method != nullptr) {
       return method->bind(shared_from_this());  // Change method's closure and bind it to new scope.
     }
-    throw RuntimeError { name, "undefined property '" + std::string { name.lexeme } + "'." };
+    throw InterpreterError { name, "undefined property '" + std::string { name.lexeme } + "'." };
   }
   void set(const Token& name, typeRuntimeValue value) {
     fields[name.lexeme] = value;
@@ -196,16 +196,16 @@ struct Interpreter : public ExprVisitor, public StmtVisitor {
     if (std::holds_alternative<std::monostate>(obj)) return false;
     if (std::holds_alternative<bool>(obj)) return std::get<bool>(obj);
     if (std::holds_alternative<std::string_view>(obj)) return std::get<std::string_view>(obj).size() > 0;
-    if (std::holds_alternative<double>(obj)) return !isDoubleEqual(std::get<double>(obj), 0);
+    if (std::holds_alternative<typeRuntimeNumericValue>(obj)) return !isDoubleEqual(std::get<typeRuntimeNumericValue>(obj), 0);
     return true;
   }
   void checkNumberOperand(const Token& op, const typeRuntimeValue& operand) const {
-    if (std::holds_alternative<double>(operand)) return;
-    throw RuntimeError { op, "operand must be a number." };
+    if (std::holds_alternative<typeRuntimeNumericValue>(operand)) return;
+    throw InterpreterError { op, "operand must be a number." };
   }
   void checkNumberOperands(const Token& op, const typeRuntimeValue& left, const typeRuntimeValue& right) const {
-    if (std::holds_alternative<double>(left) && std::holds_alternative<double>(right)) return;
-    throw RuntimeError { op, "operands must be numbers." };
+    if (std::holds_alternative<typeRuntimeNumericValue>(left) && std::holds_alternative<typeRuntimeNumericValue>(right)) return;
+    throw InterpreterError { op, "operands must be numbers." };
   }
   typeRuntimeValue lookUpVariable(const Token& name, Expr::sharedConstExprPtr expr) {
     const auto distance = locals.find(expr);
@@ -310,7 +310,7 @@ struct Interpreter : public ExprVisitor, public StmtVisitor {
             return (std::ostringstream {} << std::get<std::string_view>(left) << std::get<std::string_view>(right)).str();
           }
         }
-        throw RuntimeError { expr->op, "operand must be type of number or string." };
+        throw InterpreterError { expr->op, "operand must be type of number or string." };
       }
       case TokenType::SLASH: {
         checkNumberOperands(expr->op, left, right);
@@ -331,11 +331,11 @@ struct Interpreter : public ExprVisitor, public StmtVisitor {
       arguments.push_back(evaluate(argument));  // Save evaluated args.
     }
     if (!std::holds_alternative<std::shared_ptr<Invokable>>(callee)) {  // Check if it's callable.
-      throw RuntimeError { expr->paren, "can only call functions and classes." };
+      throw InterpreterError { expr->paren, "can only call functions and classes." };
     }
     const auto function = std::get<std::shared_ptr<Invokable>>(callee);
     if (arguments.size() != function->arity()) {  // Check if it matches the calling arity.
-      throw RuntimeError { expr->paren, "expected " + std::to_string(function->arity()) + " arguments but got " + std::to_string( arguments.size()) + "." };
+      throw InterpreterError { expr->paren, "expected " + std::to_string(function->arity()) + " arguments but got " + std::to_string( arguments.size()) + "." };
     }
     return function->invoke(this, arguments);
   }
@@ -343,12 +343,12 @@ struct Interpreter : public ExprVisitor, public StmtVisitor {
     auto obj = evaluate(expr->obj);
     auto vp = std::get_if<std::shared_ptr<ClassInstance>>(&obj);  // Only "ClassInstance" is able to have a getter.
     if (vp != nullptr) return (*vp)->get(expr->name);
-    throw RuntimeError { expr->name, "only instances have properties." };
+    throw InterpreterError { expr->name, "only instances have properties." };
   }
   typeRuntimeValue visitSetExpr(std::shared_ptr<const SetExpr> expr) override {
     auto obj = evaluate(expr->obj);
     auto vp = std::get_if<std::shared_ptr<ClassInstance>>(&obj);  // Only "ClassInstance" is able to have a setter.
-    if (vp == nullptr) throw RuntimeError { expr->name, "only instances have fields." };
+    if (vp == nullptr) throw InterpreterError { expr->name, "only instances have fields." };
     auto value = evaluate(expr->value);
     (*vp)->set(expr->name, value);
     return value;
@@ -359,7 +359,7 @@ struct Interpreter : public ExprVisitor, public StmtVisitor {
     auto thisInstance = std::get<std::shared_ptr<ClassInstance>>(env->getAt(distance - 1, "this"));
     auto method = superClass->findMethod(expr->method.lexeme);
     if (method == nullptr) {
-      throw RuntimeError { expr->method, "undefined property '" + std::string { expr->method.lexeme } + "'." };
+      throw InterpreterError { expr->method, "undefined property '" + std::string { expr->method.lexeme } + "'." };
     }
     return method->bind(thisInstance);
   }
@@ -408,11 +408,11 @@ struct Interpreter : public ExprVisitor, public StmtVisitor {
       const auto superClassPtr = std::get_if<std::shared_ptr<Invokable>>(&superClassVal);
       const auto invalidSuperErrorMsg = "super class must be a class.";
       if (superClassPtr == nullptr) {
-        throw RuntimeError { stmt->superClass->name, invalidSuperErrorMsg };
+        throw InterpreterError { stmt->superClass->name, invalidSuperErrorMsg };
       } else {
         superClass = std::dynamic_pointer_cast<Class>(*superClassPtr);
         if (superClass == nullptr) {
-          throw RuntimeError { stmt->superClass->name, invalidSuperErrorMsg };
+          throw InterpreterError { stmt->superClass->name, invalidSuperErrorMsg };
         }
       }
     }
@@ -443,8 +443,8 @@ struct Interpreter : public ExprVisitor, public StmtVisitor {
       for (const auto& statement : statements) {
         execute(statement);
       }
-    } catch (const RuntimeError& runtimeError) {
-      Error::runtimeError(runtimeError);
+    } catch (const InterpreterError& interpretError) {
+      Error::interpretError(interpretError);
     }
   }
 };

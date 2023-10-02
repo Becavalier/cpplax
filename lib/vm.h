@@ -6,39 +6,60 @@
 
 #include <iostream>
 #include <array>
+#include <variant>
 #include "./chunk.h"
 #include "./type.h"
 #include "./compiler.h"
 
 struct VM {
-  using typeVMStack = std::array<typeRTNumericValue, STACK_MAX>;
+  using typeVMStack = std::array<typeRuntimeValue, STACK_MAX>;
   const Chunk& chunk;
   typeVMStack stack;
   typeVMCodeArray::const_iterator ip;  // Points to the instruction about to be executed.
   typeVMStack::iterator stackTop;  // Points just past the last used element.
   explicit VM(const Chunk& chunk) : chunk(chunk), ip(chunk.code.cbegin()), stackTop(stack.begin()) {}
   ~VM() {}
+  auto currentLine(void) const {
+    return chunk.getLine(ip - 1);
+  }
   auto top(void) {
     return stackTop - 1;
   }
-  void push(typeRTNumericValue v) {
+  void push(typeRuntimeValue v) {
     *stackTop = v;
     ++stackTop;
   }
-  typeRTNumericValue pop(void) {
+  auto peek(size_t distance) const {
+    return *(stackTop - 1 - distance);
+  }
+  auto pop(void) {
     --stackTop;
     return *stackTop;
   }
   void resetStack(void) {
     stackTop = stack.data();
   }
+  void checkNumberOperands(int8_t n) const {
+    while (--n >= 0) {
+      if (!std::holds_alternative<typeRuntimeNumericValue>(peek(n)))
+        throw VMError { currentLine(), "operand(s) must be a number." };
+    }
+  }
+  auto isFalsey(const typeRuntimeValue obj) const {
+    if (std::holds_alternative<std::monostate>(obj)) return true;
+    if (std::holds_alternative<bool>(obj)) return !std::get<bool>(obj);
+    if (std::holds_alternative<std::string_view>(obj)) return std::get<std::string_view>(obj).size() == 0;
+    if (std::holds_alternative<typeRuntimeNumericValue>(obj)) return isDoubleEqual(std::get<typeRuntimeNumericValue>(obj), 0);
+    return false;
+  }
   VMResult run(void) {
     #define READ_BYTE() (*ip++)
     #define READ_CONSTANT() (chunk.constants[READ_BYTE()])
-    #define BINARY_OP(op) \
+    #define NUM_BINARY_OP(op) \
       do { \
-        auto b = pop();  /* The left operand would be at the bottom. */ \
-        auto a = pop(); \
+        checkNumberOperands(2); \
+        auto b = std::get<typeRuntimeNumericValue>(pop());  /* The left operand would be at the bottom. */ \
+        auto a = std::get<typeRuntimeNumericValue>(pop()); \
         push(a op b); \
       } while (false)
     while (true) {
@@ -54,12 +75,13 @@ struct VM {
 #endif
       const auto instruction = READ_BYTE();
       switch (instruction) {
-        case OpCode::OP_ADD: BINARY_OP(+); break;
-        case OpCode::OP_SUBTRACT: BINARY_OP(-); break;
-        case OpCode::OP_MULTIPLY: BINARY_OP(*); break;
-        case OpCode::OP_DIVIDE: BINARY_OP(/); break;
+        case OpCode::OP_ADD: NUM_BINARY_OP(+); break;
+        case OpCode::OP_SUBTRACT: NUM_BINARY_OP(-); break;
+        case OpCode::OP_MULTIPLY: NUM_BINARY_OP(*); break;
+        case OpCode::OP_DIVIDE: NUM_BINARY_OP(/); break;
         case OpCode::OP_NEGATE: {
-          *top() = -*top();
+          checkNumberOperands(1);
+          *top() = -std::get<typeRuntimeNumericValue>(*top());
           break;
         }
         case OpCode::OP_RETURN: {
@@ -72,11 +94,22 @@ struct VM {
           push(constant);
           break;
         }
+        case OpCode::OP_NIL: push(std::monostate {}); break;
+        case OpCode::OP_TRUE: push(true); break;
+        case OpCode::OP_FALSE: push(false); break;
+        case OpCode::OP_NOT: push(isFalsey(pop())); break;
+        case OpCode::OP_EQUAL: {
+          const auto x = pop();
+          const auto y = pop();
+          push(x == y);
+          break;
+        }
+        case OpCode::OP_GREATER: NUM_BINARY_OP(>); break;
+        case OpCode::OP_LESS: NUM_BINARY_OP(<); break;
       }
     }
     #undef READ_BYTE
     #undef READ_CONSTANT
-    #undef BINARY_OP
   }
   VMResult interpret(void) {
     return run();

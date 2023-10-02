@@ -7,11 +7,21 @@
 #include <utility>
 #include "./token.h"
 
-struct RuntimeError : public std::exception {
+struct VMError : public std::exception {
+  const size_t line;
+  const std::string msg;
+ public:
+  explicit VMError(const size_t line, const std::string& msg) : line(line), msg(msg) {}
+  const char* what(void) const noexcept {
+    return msg.data();
+  }
+};
+
+struct InterpreterError : public std::exception {
   const Token& token;
   const std::string msg;
  public:
-  RuntimeError(const Token& token, const std::string& msg) : token(token), msg(msg) {}
+  InterpreterError(const Token& token, const std::string& msg) : token(token), msg(msg) {}
   const char* what(void) const noexcept {
     return msg.data();
   }
@@ -19,7 +29,8 @@ struct RuntimeError : public std::exception {
 
 struct Error {
   static bool hadError;
-  static bool hadRuntimeError;
+  static bool hadInterpreterError;
+  static bool hadVMError;
   static void report(
     size_t line, 
     const std::string_view where, 
@@ -38,9 +49,13 @@ struct Error {
   static void error(size_t line, std::string_view where, const std::string_view msg) {
     report(line, where, msg);
   }
-  static void runtimeError(const RuntimeError& err) {
+  static void interpretError(const InterpreterError& err) {
     error(err.token, err.what());
-    hadRuntimeError = true;
+    hadInterpreterError = true;
+  }
+  static void vmError(const VMError& err) {
+    error(err.line, err.what());
+    hadVMError = true;
   }
 };
 

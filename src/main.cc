@@ -66,7 +66,7 @@ struct Lax {
         oss << file.rdbuf();
         run(oss.str());
         if (Error::hadError) std::exit(EX_DATAERR);
-        if (Error::hadRuntimeError) std::exit(EX_SOFTWARE);
+        if (Error::hadInterpreterError) std::exit(EX_SOFTWARE);
         return;
       }
     }
