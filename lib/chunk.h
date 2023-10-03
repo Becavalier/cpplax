@@ -11,14 +11,14 @@
 #include <ranges>
 #include <unordered_map>
 #include <utility>
-#include "./type.h"
+#include "./type.h" 
 #include "./helper.h"
 
 struct Debugger;
 struct Chunk {
   friend struct Debugger;
   typeVMCodeArray code;  // A heterogeneous storage (saving both opcodes and operands).
-  typeRuntimeNumericValueArray constants;
+  typeRuntimeValueArray constants;
   std::vector<size_t> lines;  // Save line information with run-length encoding.
   Chunk() = default;
   void addCode(const std::vector<std::pair<OpCodeType, size_t>>& snapshot) {
@@ -50,7 +50,7 @@ struct Chunk {
     }
     return 0;
   }
-  size_t addConstant(typeRuntimeNumericValue v) {
+  size_t addConstant(typeRuntimeValue v) {
     try {
       constants.push_back(v);
     } catch (const std::bad_alloc& e) {

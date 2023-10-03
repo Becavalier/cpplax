@@ -37,9 +37,10 @@ struct ParseRule {
 
 struct Compiler {
   bool panicMode = false;
-  const std::vector<Token>& tokens;
+  std::vector<Token>& tokens;
   std::vector<Token>::const_iterator current;
   Chunk chunk;
+  HeapObj* objs;  // Points to the head of the heap object list.
   /**
    * Rule table for "Pratt Parser". Columns are:
    * - The function to compile a prefix expression starting with a token of that type.
@@ -67,7 +68,7 @@ struct Compiler {
     [TokenType::LESS] = { nullptr, &Compiler::binary, Precedence::PREC_COMPARISON },
     [TokenType::LESS_EQUAL] = { nullptr, &Compiler::binary, Precedence::PREC_COMPARISON },
     [TokenType::IDENTIFIER] = { nullptr, nullptr, Precedence::PREC_NONE },
-    [TokenType::STRING] = { nullptr, nullptr, Precedence::PREC_NONE },
+    [TokenType::STRING] = { &Compiler::string, nullptr, Precedence::PREC_NONE },
     [TokenType::NUMBER] = { &Compiler::number, nullptr, Precedence::PREC_NONE },
     [TokenType::AND] = { nullptr, nullptr, Precedence::PREC_NONE },
     [TokenType::CLASS] = { nullptr, nullptr, Precedence::PREC_NONE },
@@ -86,7 +87,7 @@ struct Compiler {
     [TokenType::WHILE] = { nullptr, nullptr, Precedence::PREC_NONE },
     [TokenType::SOURCE_EOF] = { nullptr, nullptr, Precedence::PREC_NONE },
   };
-  explicit Compiler(const std::vector<Token>& tokens) : tokens(tokens), current(tokens.cbegin()) {}
+  explicit Compiler(std::vector<Token>& tokens) : tokens(tokens), current(tokens.cbegin()), objs(nullptr) {}
   auto& peek(void) {
     return *current;
   }
@@ -120,7 +121,7 @@ struct Compiler {
   void emitByte(OpCodeType byte, size_t line) {
     chunk.addCode(byte, line);
   }
-  void emitConstant(typeRuntimeNumericValue value) {
+  void emitConstant(typeRuntimeValue value) {
     const auto constantIdx = chunk.addConstant(value);
     if (constantIdx <= UINT8_MAX) {
       emitByte(OpCode::OP_CONSTANT);
@@ -146,8 +147,11 @@ struct Compiler {
   const ParseRule* getRule(TokenType type) {
     return &rules[type];
   }
+  void string(void) {
+    emitConstant(new HeapStringObj { std::get<std::string_view>(previous().literal), &objs });  // Generate a sting object on the heap.
+  }
   void number(void) {
-    emitConstant(std::get<typeRuntimeNumericValue>(previous().literal));  // Number constant has been consumed.
+    emitConstant(previous().literal);  // Number constant has been consumed.
   }
   void grouping(void) {
     expression();  // The opening '(' has been consumed.
@@ -208,6 +212,7 @@ struct Compiler {
       ChunkDebugger::disassembleChunk(chunk, "code");
     }
 #endif   
+    tokens.clear();
     return chunk;
   }
 };

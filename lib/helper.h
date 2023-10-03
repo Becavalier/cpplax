@@ -10,6 +10,7 @@
 #include <ios>
 #include <iomanip>
 #include <cstdint>
+#include "./type.h"
 
 template<typename T> struct isVariant : std::false_type {};
 template<typename ...Args> struct isVariant<std::variant<Args...>> : std::true_type {};
@@ -43,6 +44,14 @@ std::string stringifyVariantValue(const T& literal) {
       return std::string { arg };
     } else if constexpr (std::is_same_v<K, std::monostate>) {
       return std::string { "nil" };
+    } else if constexpr (std::is_same_v<K, std::string>) {
+      return arg;
+    } else if constexpr (std::is_same_v<K, HeapObj*>) {
+      switch (arg->type) {
+        case HeapObjType::OBJ_STRING: {
+          return static_cast<HeapStringObj*>(arg)->str;
+        }
+      }
     } else {
       return std::string { "<rt-value>" };
     }

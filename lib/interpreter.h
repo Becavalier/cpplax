@@ -23,7 +23,7 @@
 #include "./env.h"
 #include "./type.h"
 
-// Forward declaration.
+// Forward declarations.
 struct Interpreter;
 struct ClassInstance;
 
@@ -107,7 +107,7 @@ struct Class : public Invokable, public std::enable_shared_from_this<Class> {
 
 /**
  * Class "ClassInstance".
- * The runtime representation of Class instance.
+ * The runtime representation of the Class instance.
 */
 struct ClassInstance : public std::enable_shared_from_this<ClassInstance> {
   explicit ClassInstance(std::shared_ptr<Class> thisClass) : thisClass(thisClass) {}

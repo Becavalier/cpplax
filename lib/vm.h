@@ -17,8 +17,8 @@ struct VM {
   typeVMStack stack;
   typeVMCodeArray::const_iterator ip;  // Points to the instruction about to be executed.
   typeVMStack::iterator stackTop;  // Points just past the last used element.
-  explicit VM(const Chunk& chunk) : chunk(chunk), ip(chunk.code.cbegin()), stackTop(stack.begin()) {}
-  ~VM() {}
+  HeapObj* objs;  // Points to the head of the heap object list.
+  VM(const Chunk& chunk, HeapObj* objs) : chunk(chunk), ip(chunk.code.cbegin()), stackTop(stack.begin()), objs(objs) {}
   auto currentLine(void) const {
     return chunk.getLine(ip - 1);
   }
@@ -42,7 +42,7 @@ struct VM {
   void checkNumberOperands(int8_t n) const {
     while (--n >= 0) {
       if (!std::holds_alternative<typeRuntimeNumericValue>(peek(n)))
-        throw VMError { currentLine(), "operand(s) must be a number." };
+        throw VMError { currentLine(), n > 1 ? "operand must be a number." : "operands must be numbers." };
     }
   }
   auto isFalsey(const typeRuntimeValue obj) const {
@@ -51,6 +51,17 @@ struct VM {
     if (std::holds_alternative<std::string_view>(obj)) return std::get<std::string_view>(obj).size() == 0;
     if (std::holds_alternative<typeRuntimeNumericValue>(obj)) return isDoubleEqual(std::get<typeRuntimeNumericValue>(obj), 0);
     return false;
+  }
+  void freeObjects(void) {
+    auto obj = objs;
+    while (obj != nullptr) {
+      auto next = obj->next;
+      delete obj;
+      obj = next;
+    }
+  }
+  void freeVM(void) {
+    freeObjects();
   }
   VMResult run(void) {
     #define READ_BYTE() (*ip++)
@@ -75,7 +86,22 @@ struct VM {
 #endif
       const auto instruction = READ_BYTE();
       switch (instruction) {
-        case OpCode::OP_ADD: NUM_BINARY_OP(+); break;
+        case OpCode::OP_ADD: {
+          const auto y = pop();
+          const auto x = pop();
+          if (std::holds_alternative<HeapObj*>(x) && std::holds_alternative<HeapObj*>(y)) {
+            const auto heapX = std::get<HeapObj*>(x);
+            const auto heapY = std::get<HeapObj*>(y);
+            if (heapX->type == HeapObjType::OBJ_STRING && heapY->type == HeapObjType::OBJ_STRING) {
+              push(new HeapStringObj { static_cast<HeapStringObj*>(heapX)->str + static_cast<HeapStringObj*>(heapY)->str, &objs });
+              break;
+            }
+          } else {
+            push(std::get<typeRuntimeNumericValue>(x) +  std::get<typeRuntimeNumericValue>(y));
+            break;
+          }
+          throw VMError { currentLine(), "operands must be two numbers or two strings." };
+        }
         case OpCode::OP_SUBTRACT: NUM_BINARY_OP(-); break;
         case OpCode::OP_MULTIPLY: NUM_BINARY_OP(*); break;
         case OpCode::OP_DIVIDE: NUM_BINARY_OP(/); break;
@@ -101,7 +127,23 @@ struct VM {
         case OpCode::OP_EQUAL: {
           const auto x = pop();
           const auto y = pop();
-          push(x == y);
+          if (std::holds_alternative<HeapObj*>(x) && std::holds_alternative<HeapObj*>(y)) {
+            const auto heapX = std::get<HeapObj*>(x);
+            const auto heapY = std::get<HeapObj*>(y);
+            if (heapX->type == heapY->type) {
+              switch (heapX->type) {
+                case HeapObjType::OBJ_STRING: {
+                  push(static_cast<HeapStringObj*>(heapX)->str == static_cast<HeapStringObj*>(heapY)->str);
+                  break;
+                }
+                default: ;
+              }
+            } else {
+              push(false);
+            }
+          } else {
+            push(x == y);
+          }
           break;
         }
         case OpCode::OP_GREATER: NUM_BINARY_OP(>); break;
@@ -112,7 +154,13 @@ struct VM {
     #undef READ_CONSTANT
   }
   VMResult interpret(void) {
-    return run();
+    try {
+      const auto result = run();
+      freeVM();
+      return result;
+    } catch(const VMError* err) {
+      return VMResult::INTERPRET_RUNTIME_ERROR;
+    }
   }
 };
 

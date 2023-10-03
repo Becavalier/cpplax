@@ -31,7 +31,7 @@ static void reportIllegalUsage(void) {
 struct Lax {
   static void run(const std::string& code) {
     Scanner scanner { code };  // Scanning (lexing).
-    const std::vector<Token> tokens = scanner.scanTokens();
+    std::vector<Token> tokens = scanner.scanTokens();
     if (Error::hadError) return;
 
     if (useInterpreterMode) {
@@ -52,7 +52,7 @@ struct Lax {
       const auto chunk = compiler.compile();  // Compile into byte codes.
       if (Error::hadError) return;
 
-      VM vm { chunk };
+      VM vm { chunk, compiler.objs };
       vm.interpret();
     }
   }

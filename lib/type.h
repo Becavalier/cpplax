@@ -6,6 +6,7 @@
 #include <memory>
 #include <vector>
 #include <unordered_map>
+#include <iostream>
 
 using typeRuntimeNumericValue= double;
 
@@ -61,7 +62,6 @@ enum TokenType : uint8_t {
 /**
  * Interpreter Related Types
 */
-
 enum class FunctionType : uint8_t {
   NONE,
   FUNCTION,
@@ -81,7 +81,7 @@ using typeKeywordList = std::unordered_map<std::string_view, TokenType>;
 using typeScopeRecord = std::unordered_map<std::string_view, bool>;
 
 /**
- * VM Related Types
+ * VM & Compiler Related Types
 */
 using OpCodeType = uint8_t;
 enum OpCode : OpCodeType {
@@ -108,16 +108,48 @@ enum class VMResult : uint8_t {
   INTERPRET_RUNTIME_ERROR,
 };
 
-using typeVMCodeArray = std::vector<uint8_t>;
-using typeRuntimeNumericValueArray = std::vector<typeRuntimeNumericValue>;
+enum class HeapObjType : uint8_t {
+  OBJ_STRING,
+};
 
-// Runtime value.
-using typeRuntimeValue = std::variant<
-  std::monostate, 
-  std::shared_ptr<Invokable>, 
-  std::shared_ptr<ClassInstance>,
-  std::string_view, 
-  typeRuntimeNumericValue, 
-  bool>;
+struct HeapObj {
+  HeapObjType type;
+  HeapObj* next;  // Make up an intrusive list.
+  explicit HeapObj(HeapObjType type, HeapObj* next) : type(type), next(next) {}
+  virtual ~HeapObj() {};
+};
+
+struct HeapStringObj : public HeapObj {
+  std::string str;
+  explicit HeapStringObj(std::string_view str, HeapObj** next) : HeapObj(HeapObjType::OBJ_STRING, *next), str(str) {
+    *next = this;
+  }
+  ~HeapStringObj() {
+    str.clear();
+  }
+};
+
+using typeVMCodeArray = std::vector<uint8_t>;
+
+/**
+ * Core runtime types
+*/
+
+using typeRuntimeValue = 
+  std::variant<
+    // Common fields.
+    std::monostate, 
+    std::string_view, 
+    typeRuntimeNumericValue, 
+    bool,
+    // Interpreter fields.
+    std::shared_ptr<Invokable>, 
+    std::shared_ptr<ClassInstance>,
+    std::string,
+    // VM & Compiler fieldds.
+    HeapObj*  // Pointer to the heap value.
+  >;
+using typeRuntimeValueArray = std::vector<typeRuntimeValue>;
+
 
 #endif
