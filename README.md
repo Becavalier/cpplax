@@ -77,6 +77,7 @@ arguments      → expression ( "," expression )* ;
 
 - [ ] Make the scanner "lazy" and spit out a token every time the parser requires (memory friendly).
 - [ ] [Interpreter] Look up variables via indices in the corresponding environment.
+- [ ] [Compiler] Just-in-time compilation.
 
 
 ### Features

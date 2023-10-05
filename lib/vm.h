@@ -7,6 +7,7 @@
 #include <iostream>
 #include <array>
 #include <variant>
+#include <unordered_map>
 #include "./chunk.h"
 #include "./type.h"
 #include "./compiler.h"
@@ -18,7 +19,8 @@ struct VM {
   typeVMCodeArray::const_iterator ip;  // Points to the instruction about to be executed.
   typeVMStack::iterator stackTop;  // Points just past the last used element.
   HeapObj* objs;  // Points to the head of the heap object list.
-  VM(const Chunk& chunk, HeapObj* objs) : chunk(chunk), ip(chunk.code.cbegin()), stackTop(stack.begin()), objs(objs) {}
+  InternedConstants* internedConstants;
+  VM(const Chunk& chunk, HeapObj* objs, InternedConstants* internedConstants) : chunk(chunk), ip(chunk.code.cbegin()), stackTop(stack.begin()), objs(objs), internedConstants(internedConstants) {}
   auto currentLine(void) const {
     return chunk.getLine(ip - 1);
   }
@@ -60,8 +62,12 @@ struct VM {
       obj = next;
     }
   }
+  void freeInternedConstants(void) {
+    delete internedConstants;
+  }
   void freeVM(void) {
     freeObjects();
+    freeInternedConstants();
   }
   VMResult run(void) {
     #define READ_BYTE() (*ip++)
@@ -93,7 +99,7 @@ struct VM {
             const auto heapX = std::get<HeapObj*>(x);
             const auto heapY = std::get<HeapObj*>(y);
             if (heapX->type == HeapObjType::OBJ_STRING && heapY->type == HeapObjType::OBJ_STRING) {
-              push(new HeapStringObj { static_cast<HeapStringObj*>(heapX)->str + static_cast<HeapStringObj*>(heapY)->str, &objs });
+              push(internedConstants->add(static_cast<HeapStringObj*>(heapX)->str + static_cast<HeapStringObj*>(heapY)->str, &objs));
               break;
             }
           } else {
@@ -133,10 +139,13 @@ struct VM {
             if (heapX->type == heapY->type) {
               switch (heapX->type) {
                 case HeapObjType::OBJ_STRING: {
-                  push(static_cast<HeapStringObj*>(heapX)->str == static_cast<HeapStringObj*>(heapY)->str);
+                  push(heapX == heapY);
                   break;
                 }
-                default: ;
+                default: {
+                  push(false); 
+                  break;
+                }
               }
             } else {
               push(false);
@@ -158,7 +167,7 @@ struct VM {
       const auto result = run();
       freeVM();
       return result;
-    } catch(const VMError* err) {
+    } catch(const VMError& err) {
       return VMResult::INTERPRET_RUNTIME_ERROR;
     }
   }

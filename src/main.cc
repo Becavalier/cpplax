@@ -52,7 +52,7 @@ struct Lax {
       const auto chunk = compiler.compile();  // Compile into byte codes.
       if (Error::hadError) return;
 
-      VM vm { chunk, compiler.objs };
+      VM vm { chunk, compiler.objs, compiler.internedConstants };
       vm.interpret();
     }
   }

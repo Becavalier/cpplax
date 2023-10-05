@@ -129,6 +129,22 @@ struct HeapStringObj : public HeapObj {
   }
 };
 
+class InternedConstants  {
+  std::unordered_map<std::string_view, HeapObj*> internedConstants;
+ public:
+  InternedConstants() = default;
+  HeapObj* add(std::string_view str, HeapObj** objs) {
+    const auto target = internedConstants.find(str);
+    if (target != internedConstants.end()) {
+      return target->second;  // Reuse the existing interned string obj.
+    } else {
+      const auto heapStr = new HeapStringObj { str, objs };
+      internedConstants[heapStr->str] = heapStr;
+      return heapStr;  // Generate a new sting obj on the heap.
+    }
+  }
+};
+
 using typeVMCodeArray = std::vector<uint8_t>;
 
 /**
@@ -150,6 +166,5 @@ using typeRuntimeValue =
     HeapObj*  // Pointer to the heap value.
   >;
 using typeRuntimeValueArray = std::vector<typeRuntimeValue>;
-
 
 #endif

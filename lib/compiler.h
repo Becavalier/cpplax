@@ -6,6 +6,7 @@
 #include <string>
 #include <cstdlib>
 #include <array>
+#include <unordered_map>
 #include <cstdint>
 #include "./chunk.h"
 #include "./token.h"
@@ -41,8 +42,9 @@ struct Compiler {
   std::vector<Token>::const_iterator current;
   Chunk chunk;
   HeapObj* objs;  // Points to the head of the heap object list.
+  InternedConstants* internedConstants;
   /**
-   * Rule table for "Pratt Parser". Columns are:
+   * Rule table for "Pratt Parser". The columns are:
    * - The function to compile a prefix expression starting with a token of that type.
    * - The function to compile an infix expression whose left operand is followed by a token of that type.
    * - The precedence of an infix expression that uses that token as an operator.
@@ -87,7 +89,8 @@ struct Compiler {
     [TokenType::WHILE] = { nullptr, nullptr, Precedence::PREC_NONE },
     [TokenType::SOURCE_EOF] = { nullptr, nullptr, Precedence::PREC_NONE },
   };
-  explicit Compiler(std::vector<Token>& tokens) : tokens(tokens), current(tokens.cbegin()), objs(nullptr) {}
+  explicit Compiler(std::vector<Token>& tokens) : tokens(tokens), current(tokens.cbegin()), objs(nullptr), internedConstants(new InternedConstants {}) {}
+  Compiler(const Compiler&) = delete;
   auto& peek(void) {
     return *current;
   }
@@ -148,7 +151,8 @@ struct Compiler {
     return &rules[type];
   }
   void string(void) {
-    emitConstant(new HeapStringObj { std::get<std::string_view>(previous().literal), &objs });  // Generate a sting object on the heap.
+    const auto str = std::get<std::string_view>(previous().literal);
+    emitConstant(internedConstants->add(str, &objs));
   }
   void number(void) {
     emitConstant(previous().literal);  // Number constant has been consumed.
