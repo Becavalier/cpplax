@@ -8,9 +8,11 @@
 #include <array>
 #include <variant>
 #include <unordered_map>
+#include <cassert>
 #include "./chunk.h"
 #include "./type.h"
 #include "./compiler.h"
+#include "./error.h"
 
 struct VM {
   using typeVMStack = std::array<typeRuntimeValue, STACK_MAX>;
@@ -20,6 +22,7 @@ struct VM {
   typeVMStack::iterator stackTop;  // Points just past the last used element.
   HeapObj* objs;  // Points to the head of the heap object list.
   InternedConstants* internedConstants;
+  std::unordered_map<HeapObj*, typeRuntimeValue> globals;
   VM(const Chunk& chunk, HeapObj* objs, InternedConstants* internedConstants) : chunk(chunk), ip(chunk.code.cbegin()), stackTop(stack.begin()), objs(objs), internedConstants(internedConstants) {}
   auto currentLine(void) const {
     return chunk.getLine(ip - 1);
@@ -69,9 +72,26 @@ struct VM {
     freeObjects();
     freeInternedConstants();
   }
+  auto readByte(void) {
+    return *ip++;
+  }
+  auto readConstant(void) {
+    return chunk.constants[readByte()];
+  }
+  auto readConstantOfExpectedType(HeapObjType type) {
+    const auto name = std::get<HeapObj*>(readConstant());
+    assert(name->type == type);  // Runtime assertion.
+    return name;
+  }
+  void testDefinedVariable(HeapObj* name, const std::string& errorMsg) {
+    if (!globals.contains(name)) throw VMError { currentLine(), errorMsg };
+  }
+  auto getDefinedVariable(HeapObj* name, const std::string& errorMsg) {
+    const auto value = globals.find(name);
+    if (value == globals.end()) throw VMError { currentLine(), errorMsg };
+    return value;
+  }
   VMResult run(void) {
-    #define READ_BYTE() (*ip++)
-    #define READ_CONSTANT() (chunk.constants[READ_BYTE()])
     #define NUM_BINARY_OP(op) \
       do { \
         checkNumberOperands(2); \
@@ -90,7 +110,7 @@ struct VM {
       printf("<-\n");
       ChunkDebugger::disassembleInstruction(chunk, ip);
 #endif
-      const auto instruction = READ_BYTE();
+      const auto instruction = readByte();
       switch (instruction) {
         case OpCode::OP_ADD: {
           const auto y = pop();
@@ -99,7 +119,7 @@ struct VM {
             const auto heapX = std::get<HeapObj*>(x);
             const auto heapY = std::get<HeapObj*>(y);
             if (heapX->type == HeapObjType::OBJ_STRING && heapY->type == HeapObjType::OBJ_STRING) {
-              push(internedConstants->add(static_cast<HeapStringObj*>(heapX)->str + static_cast<HeapStringObj*>(heapY)->str, &objs));
+              push(internedConstants->add(heapX->toStringObj()->str + heapY->toStringObj()->str, &objs));
               break;
             }
           } else {
@@ -117,12 +137,10 @@ struct VM {
           break;
         }
         case OpCode::OP_RETURN: {
-          ChunkDebugger::printValue(pop());
-          printf("\n");
           return VMResult::INTERPRET_OK;
         }
         case OpCode::OP_CONSTANT: {
-          auto constant = READ_CONSTANT();
+          auto constant = readConstant();
           push(constant);
           break;
         }
@@ -157,10 +175,25 @@ struct VM {
         }
         case OpCode::OP_GREATER: NUM_BINARY_OP(>); break;
         case OpCode::OP_LESS: NUM_BINARY_OP(<); break;
+        case OpCode::OP_POP: pop(); break;
+        case OpCode::OP_DEFINE_GLOBAL: {
+          globals[readConstantOfExpectedType(HeapObjType::OBJ_STRING)] = pop();
+          break;
+        }
+        case OpCode::OP_GET_GLOBAL: {
+          const auto name = readConstantOfExpectedType(HeapObjType::OBJ_STRING);
+          const auto value = getDefinedVariable(name, "Undefined variable '" + name->toStringObj()->str + "'.");
+          push(value->second);
+          break;
+        }
+        case OpCode::OP_SET_GLOBAL: {
+          const auto name = readConstantOfExpectedType(HeapObjType::OBJ_STRING);
+          testDefinedVariable(name, "Undefined variable '" + name->toStringObj()->str + "'.");
+          globals[name] = peek(0);  // Assignment expression doesn’t pop the value off the stack.
+          break;
+        }
       }
     }
-    #undef READ_BYTE
-    #undef READ_CONSTANT
   }
   VMResult interpret(void) {
     try {
@@ -168,6 +201,7 @@ struct VM {
       freeVM();
       return result;
     } catch(const VMError& err) {
+      Error::vmError(err);
       return VMResult::INTERPRET_RUNTIME_ERROR;
     }
   }

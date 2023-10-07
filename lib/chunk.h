@@ -90,6 +90,9 @@ struct ChunkDebugger {
     const auto instruction = *offset;
     switch (instruction) {  // Instructions have different sizes. 
       case OpCode::OP_CONSTANT: return constantInstruction("OP_CONSTANT", chunk, offset);
+      case OpCode::OP_DEFINE_GLOBAL: return constantInstruction("OP_DEFINE_GLOBAL", chunk, offset);
+      case OpCode::OP_GET_GLOBAL: return constantInstruction("OP_GET_GLOBAL", chunk, offset);
+      case OpCode::OP_SET_GLOBAL: return constantInstruction("OP_SET_GLOBAL", chunk, offset);
       case OpCode::OP_NIL: return simpleInstruction("OP_NIL", offset);
       case OpCode::OP_TRUE: return simpleInstruction("OP_TRUE", offset);
       case OpCode::OP_FALSE: return simpleInstruction("OP_FALSE", offset);
@@ -103,6 +106,7 @@ struct ChunkDebugger {
       case OpCode::OP_EQUAL: return simpleInstruction("OP_EQUAL", offset);
       case OpCode::OP_GREATER: return simpleInstruction("OP_GREATER", offset);
       case OpCode::OP_LESS: return simpleInstruction("OP_LESS", offset);
+      case OpCode::OP_POP: return simpleInstruction("OP_POP", offset);
       default: {
         std::cout << "Unknow opcode: " << +instruction << '.' << std::endl;
         return offset + 1;

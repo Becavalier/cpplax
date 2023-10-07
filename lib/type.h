@@ -100,6 +100,10 @@ enum OpCode : OpCodeType {
   OP_EQUAL,
   OP_GREATER,
   OP_LESS,
+  OP_POP, 
+  OP_DEFINE_GLOBAL,
+  OP_GET_GLOBAL,
+  OP_SET_GLOBAL,
 };
 
 enum class VMResult : uint8_t {
@@ -112,10 +116,12 @@ enum class HeapObjType : uint8_t {
   OBJ_STRING,
 };
 
+struct HeapStringObj;
 struct HeapObj {
   HeapObjType type;
   HeapObj* next;  // Make up an intrusive list.
   explicit HeapObj(HeapObjType type, HeapObj* next) : type(type), next(next) {}
+  HeapStringObj* toStringObj(void);
   virtual ~HeapObj() {};
 };
 
@@ -150,7 +156,6 @@ using typeVMCodeArray = std::vector<uint8_t>;
 /**
  * Core runtime types
 */
-
 using typeRuntimeValue = 
   std::variant<
     // Common fields.

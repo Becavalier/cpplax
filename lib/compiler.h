@@ -13,7 +13,7 @@
 #include "./error.h"
 
 struct Compiler;
-using typeParseFn = void (Compiler::*)();
+using typeParseFn = void (Compiler::*)(bool);
 
 // All prefix operators in Lox have the same precedence.
 enum Precedence : uint8_t {  // Precedence: lowest -> highest.
@@ -69,7 +69,7 @@ struct Compiler {
     [TokenType::GREATER_EQUAL] = { nullptr, &Compiler::binary, Precedence::PREC_COMPARISON },
     [TokenType::LESS] = { nullptr, &Compiler::binary, Precedence::PREC_COMPARISON },
     [TokenType::LESS_EQUAL] = { nullptr, &Compiler::binary, Precedence::PREC_COMPARISON },
-    [TokenType::IDENTIFIER] = { nullptr, nullptr, Precedence::PREC_NONE },
+    [TokenType::IDENTIFIER] = { &Compiler::variable, nullptr, Precedence::PREC_NONE },
     [TokenType::STRING] = { &Compiler::string, nullptr, Precedence::PREC_NONE },
     [TokenType::NUMBER] = { &Compiler::number, nullptr, Precedence::PREC_NONE },
     [TokenType::AND] = { nullptr, nullptr, Precedence::PREC_NONE },
@@ -91,13 +91,13 @@ struct Compiler {
   };
   explicit Compiler(std::vector<Token>& tokens) : tokens(tokens), current(tokens.cbegin()), objs(nullptr), internedConstants(new InternedConstants {}) {}
   Compiler(const Compiler&) = delete;
-  auto& peek(void) {
+  auto& peek(void) const {
     return *current;
   }
   void advance(void) {
     ++current;
   }
-  auto previous(void) {
+  auto& previous(void) {
     return *(current - 1);
   }
   void consume(TokenType type, const char* msg) {
@@ -108,8 +108,8 @@ struct Compiler {
     errorAtCurrent(msg);
   }
   void errorAt(const Token& token, const char* msg) {
-    // if (panicMode) return;
-    // panicMode = true;
+    if (panicMode) return;  // Minimize the number of cascaded compile errors that it reports.
+    panicMode = true;
     Error::error(token, msg);  // Error::hadError -> true.
   }
   void errorAtCurrent(const char* msg) {
@@ -121,17 +121,31 @@ struct Compiler {
   void emitByte(OpCodeType byte) {
     chunk.addCode(byte, previous().line);
   }
+  void emitBytes(OpCodeType byteA, OpCodeType byteB) {
+    emitByte(byteA);
+    emitByte(byteB);
+  }
   void emitByte(OpCodeType byte, size_t line) {
     chunk.addCode(byte, line);
   }
   void emitConstant(typeRuntimeValue value) {
-    const auto constantIdx = chunk.addConstant(value);
-    if (constantIdx <= UINT8_MAX) {
-      emitByte(OpCode::OP_CONSTANT);
-      emitByte(static_cast<OpCodeType>(constantIdx));
-    } else {
+    emitBytes(OpCode::OP_CONSTANT, makeConstant(value));
+  }
+  OpCodeType makeConstant(typeRuntimeValue value) {
+    auto constantIdx = chunk.addConstant(value);
+    if (constantIdx > UINT8_MAX) {
       errorAtPrevious("too many constants in one chunk.");
+      constantIdx = 0;
     }
+    return static_cast<OpCodeType>(constantIdx);
+  }
+  auto check(const TokenType& type) {
+    return peek().type == type;
+  }
+  auto match(const TokenType& type) {
+    if (!check(type)) return false;
+    advance();
+    return true;
   }
   void parsePrecedence(Precedence precedence) {  // Core driving function.
     advance();
@@ -140,28 +154,60 @@ struct Compiler {
       errorAtPrevious("expect expression.");
       return;
     }
-    (this->*prefixRule)();
+    auto canAssign = precedence <= PREC_ASSIGNMENT;
+    (this->*prefixRule)(canAssign);
     while (precedence <= getRule(peek().type)->precedence) {  // The prefix expression already compiled might be an operand for the infix operator.
       advance();
       auto infixRule = getRule(previous().type)->infix;
-      (this->*infixRule)();
+      (this->*infixRule)(canAssign);
+    }
+    if (canAssign && match(TokenType::EQUAL)) {
+      errorAtPrevious("invalid assignment target.");
     }
   }
   const ParseRule* getRule(TokenType type) {
     return &rules[type];
   }
-  void string(void) {
+  void defineVariable(OpCodeType global) {
+    emitBytes(OpCode::OP_DEFINE_GLOBAL, global);  // OpCode for defining the variable and storing its initial value.
+  }
+  auto identifierConstant(const Token& token) {
+    // Takes the given token and adds its lexeme to the chunk’s constant table as a string.
+    return makeConstant(internedConstants->add(token.lexeme, &objs));
+  }
+  auto parseVariable(const char* errorMsg) {
+    consume(TokenType::IDENTIFIER, errorMsg);
+    return identifierConstant(previous());
+  }
+  void namedVariable(const Token& name, bool canAssign) {
+    const auto arg = identifierConstant(name);
+    if (canAssign && match(TokenType::EQUAL)) {
+      expression();
+      emitBytes(OpCode::OP_SET_GLOBAL, arg);
+    } else {
+      emitBytes(OpCode::OP_GET_GLOBAL, arg);
+    }
+  }
+  void variable(bool canAssign) {
+    /**
+     * This function should look for and consume the = only if, - 
+     * it’s in the context of a low-precedence expression, to avoid case like below:
+     * a * b = c + d;
+    */
+    namedVariable(previous(), canAssign);
+  }
+  void string(bool) {
     const auto str = std::get<std::string_view>(previous().literal);
     emitConstant(internedConstants->add(str, &objs));
   }
-  void number(void) {
+  void number(bool) {
     emitConstant(previous().literal);  // Number constant has been consumed.
   }
-  void grouping(void) {
+  void grouping(bool) {
     expression();  // The opening '(' has been consumed.
     consume(TokenType::RIGHT_PAREN, "expect ')' after expression.");
   }
-  void unary() {  // "Prefix" expression.
+  void unary(bool) {  // "Prefix" expression.
     const auto& prevToken = previous();
     const auto line = prevToken.line;
     parsePrecedence(Precedence::PREC_UNARY);  // Compile the operand.
@@ -171,7 +217,7 @@ struct Compiler {
       default: return;
     }
   }
-  void binary(void) {  // "Infix" expression, the left operand has been consumed.
+  void binary(bool) {  // "Infix" expression, the left operand has been consumed.
     const auto& prevToken = previous();
     const auto opType = prevToken.type;
     const auto line = prevToken.line;
@@ -196,7 +242,7 @@ struct Compiler {
       default: return;
     }
   }
-  void literal(void) {
+  void literal(bool) {
     switch (previous().type) {
       case TokenType::FALSE: emitByte(OpCode::OP_FALSE); break;
       case TokenType::TRUE: emitByte(OpCode::OP_TRUE); break;
@@ -207,10 +253,59 @@ struct Compiler {
   void expression(void) {
     parsePrecedence(Precedence::PREC_ASSIGNMENT);
   }
-  Chunk compile(void) {
+  void expressionStatement(void) {
+    // Simply an expression followed by a semicolon.
     expression();
-    consume(TokenType::SOURCE_EOF, "expect end of expression.");
+    consume(TokenType::SEMICOLON, "expect ';' after expression.");
+    emitByte(OpCode::OP_POP);  // Discard the result.
+  }
+  void statement(void) {
+    expressionStatement();
+  }
+  void varDeclaration(void) {
+    auto global = parseVariable("expect variable name.");  // Emit variable name as constant.
+    if (match(TokenType::EQUAL)) {
+      expression();
+    } else {
+      emitByte(OpCode::OP_NIL);
+    }
+    consume(TokenType::SEMICOLON, "expect ';' after variable declaration.");
+    defineVariable(global);
+  }
+  void declaration(void) {
+    if (match(TokenType::VAR)) {
+      varDeclaration();
+    } else {
+      statement();
+    }
+    if (panicMode) synchronize();
+  }
+  void synchronize(void) {
+    panicMode = false;
+    while (peek().type != TokenType::SOURCE_EOF) {
+      if (previous().type == TokenType::SEMICOLON) return;
+      switch (peek().type) {
+        case TokenType::CLASS:
+        case TokenType::FN:
+        case TokenType::VAR:
+        case TokenType::FOR:
+        case TokenType::IF:
+        case TokenType::WHILE:
+        case TokenType::RETURN:
+          return;
+        default: ;
+      }
+      advance();
+    }
+  }
+  void endCompiler(void) {
     emitByte(OpCode::OP_RETURN);  // End compiling.
+  }
+  Chunk compile(void) {
+    while (!match(TokenType::SOURCE_EOF)) {
+      declaration();
+    }
+    endCompiler();
 #ifdef DEBUG_PRINT_CODE
     if (!Error::hadError) {
       ChunkDebugger::disassembleChunk(chunk, "code");

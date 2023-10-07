@@ -86,7 +86,7 @@ struct Lax {
   }
 };
 
-int main(int argc, const char* argv[]) {
+auto main(int argc, const char* argv[]) -> int {
   if (argc > 3) {
     reportIllegalUsage();
   } 
