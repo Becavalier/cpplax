@@ -8,9 +8,12 @@
 #include <array>
 #include <unordered_map>
 #include <cstdint>
+#include <optional>
 #include "./chunk.h"
 #include "./token.h"
 #include "./error.h"
+
+#define UINT8_COUNT (UINT8_MAX + 1)
 
 struct Compiler;
 using typeParseFn = void (Compiler::*)(bool);
@@ -43,6 +46,10 @@ struct Compiler {
   Chunk chunk;
   HeapObj* objs;  // Points to the head of the heap object list.
   InternedConstants* internedConstants;
+  // locals.
+  Local locals[UINT8_COUNT] = {};  // All the in-scope locals.
+  size_t localCount = 0;  // Tracks how many locals are in scope.
+  size_t scopeDepth = 0;  // The number of blocks surrounding the current bit of code we’re compiling.
   /**
    * Rule table for "Pratt Parser". The columns are:
    * - The function to compile a prefix expression starting with a token of that type.
@@ -168,24 +175,85 @@ struct Compiler {
   const ParseRule* getRule(TokenType type) {
     return &rules[type];
   }
-  void defineVariable(OpCodeType global) {
-    emitBytes(OpCode::OP_DEFINE_GLOBAL, global);  // OpCode for defining the variable and storing its initial value.
+  void defineVariable(std::optional<OpCodeType> variable) {
+    if (scopeDepth > 0) {
+      locals[localCount - 1].initialized = true;
+      return;
+    }
+    if (variable.has_value()) {
+      emitBytes(OpCode::OP_DEFINE_GLOBAL, variable.value());  // OpCode for defining the variable and storing its initial value.
+    }
   }
   auto identifierConstant(const Token& token) {
-    // Takes the given token and adds its lexeme to the chunk’s constant table as a string.
+    // Take the given token and add its lexeme to the chunk’s constant table as a string.
     return makeConstant(internedConstants->add(token.lexeme, &objs));
+  }
+  void addLocal(const Token* name) {
+    if (localCount == UINT8_COUNT) {
+      errorAtCurrent("too many local variables in function.");
+      return;
+    }
+    auto local = &locals[localCount++];
+    local->name = name;
+    local->depth = scopeDepth;
+    local->initialized = false;
+  }
+  void declareVariable(void) {
+    if (scopeDepth == 0) return;
+
+    // Add the local variable to the compiler’s list of variables in the current scope.
+    const auto& name = previous();
+
+    // Detect the error that having two variables with the same name in the same local scope.
+    for (auto i = localCount; i >= 1; i--) {
+      auto local = &locals[i - 1];
+      if (local->initialized && local->depth < scopeDepth) {
+        break;
+      }
+      if (local->name->lexeme == name.lexeme) {
+        errorAtPrevious("already a variable with this name in this scope.");
+      }
+    }
+    addLocal(&name);
   }
   auto parseVariable(const char* errorMsg) {
     consume(TokenType::IDENTIFIER, errorMsg);
-    return identifierConstant(previous());
+    declareVariable();
+    // Locals aren’t looked up by name. 
+    return scopeDepth == 0 
+      ? std::make_optional(identifierConstant(previous())) 
+      : std::nullopt;
+  }
+  std::optional<OpCodeType> resolveLocal(const Token& name) {
+    for (auto i = localCount; i >= 1; i--) {
+      const auto idx = i - 1;
+      const auto local = &locals[idx];
+      if (name.lexeme == local->name->lexeme) {  // Find the last declared variable with the identifier.
+        if (!local->initialized) {
+          errorAtPrevious("can't read local variable in its own initializer.");
+        }
+        return std::make_optional(idx);
+      }
+    }
+    return std::nullopt;
   }
   void namedVariable(const Token& name, bool canAssign) {
-    const auto arg = identifierConstant(name);
+    OpCodeType setOp, getOp, variableIdx;
+    const auto local = resolveLocal(name);
+    if (local.has_value()) {
+      variableIdx = local.value(); 
+      getOp = OpCode::OP_GET_LOCAL;
+      setOp = OpCode::OP_SET_LOCAL;
+    } else {
+      variableIdx = identifierConstant(name);
+      setOp = OpCode::OP_GET_GLOBAL;
+      setOp = OpCode::OP_SET_GLOBAL;
+    }
     if (canAssign && match(TokenType::EQUAL)) {
       expression();
-      emitBytes(OpCode::OP_SET_GLOBAL, arg);
+      emitBytes(setOp, variableIdx);
     } else {
-      emitBytes(OpCode::OP_GET_GLOBAL, arg);
+      emitBytes(getOp, variableIdx);
     }
   }
   void variable(bool canAssign) {
@@ -259,18 +327,40 @@ struct Compiler {
     consume(TokenType::SEMICOLON, "expect ';' after expression.");
     emitByte(OpCode::OP_POP);  // Discard the result.
   }
+  void block(void) {
+    while (!check(TokenType::RIGHT_BRACE) && !check(TokenType::SOURCE_EOF)) {
+      declaration();
+    }
+    consume(TokenType::RIGHT_BRACE, "expect '}' after block.");
+  }
+  void beginScope(void) {
+    scopeDepth++;
+  }
+  void endScope(void) {
+    scopeDepth--;
+    while (localCount > 0 && locals[localCount - 1].depth > scopeDepth) {
+      emitByte(OpCode::OP_POP);
+      localCount--;
+    }
+  }
   void statement(void) {
-    expressionStatement();
+    if (match(TokenType::LEFT_BRACE)) {
+      beginScope();
+      block();
+      endScope();
+    } else {
+      expressionStatement();
+    }
   }
   void varDeclaration(void) {
-    auto global = parseVariable("expect variable name.");  // Emit variable name as constant.
+    auto varConstantIdx = parseVariable("expect variable name.");  // Emit variable name as constant.
     if (match(TokenType::EQUAL)) {
       expression();
     } else {
       emitByte(OpCode::OP_NIL);
     }
     consume(TokenType::SEMICOLON, "expect ';' after variable declaration.");
-    defineVariable(global);
+    defineVariable(varConstantIdx);
   }
   void declaration(void) {
     if (match(TokenType::VAR)) {

@@ -77,6 +77,7 @@ enum class ClassType : uint8_t {
 
 struct Invokable;
 struct ClassInstance;
+struct Token;
 using typeKeywordList = std::unordered_map<std::string_view, TokenType>;
 using typeScopeRecord = std::unordered_map<std::string_view, bool>;
 
@@ -84,6 +85,7 @@ using typeScopeRecord = std::unordered_map<std::string_view, bool>;
  * VM & Compiler Related Types
 */
 using OpCodeType = uint8_t;
+using typeVMCodeArray = std::vector<uint8_t>;
 enum OpCode : OpCodeType {
   OP_CONSTANT,  // [OpCode, Constant Index (uint8_t)].
   // OP_CONSTANT_LONG,
@@ -104,6 +106,8 @@ enum OpCode : OpCodeType {
   OP_DEFINE_GLOBAL,
   OP_GET_GLOBAL,
   OP_SET_GLOBAL,
+  OP_GET_LOCAL,
+  OP_SET_LOCAL
 };
 
 enum class VMResult : uint8_t {
@@ -151,7 +155,12 @@ class InternedConstants  {
   }
 };
 
-using typeVMCodeArray = std::vector<uint8_t>;
+struct Local {
+  const Token* name;
+  size_t depth;
+  bool initialized;
+};
+
 
 /**
  * Core runtime types

@@ -192,6 +192,16 @@ struct VM {
           globals[name] = peek(0);  // Assignment expression doesn’t pop the value off the stack.
           break;
         }
+        case OpCode::OP_GET_LOCAL: {
+          auto slot = readByte();  // Take the operand from stack (local slot).
+          push(stack[slot]);  // Load the value.
+          break;
+        }
+        case OpCode::OP_SET_LOCAL: {
+          auto slot = readByte();
+          stack[slot] = peek(0);
+          break;
+        }
       }
     }
   }
