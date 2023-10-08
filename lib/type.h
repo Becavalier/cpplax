@@ -89,7 +89,7 @@ using typeVMCodeArray = std::vector<uint8_t>;
 enum OpCode : OpCodeType {
   OP_CONSTANT,  // [OpCode, Constant Index (uint8_t)].
   // OP_CONSTANT_LONG,
-  OP_RETURN,  // [OpCode].
+  OP_RETURN, 
   OP_NEGATE, 
   OP_ADD,
   OP_SUBTRACT,
@@ -107,7 +107,10 @@ enum OpCode : OpCodeType {
   OP_GET_GLOBAL,
   OP_SET_GLOBAL,
   OP_GET_LOCAL,
-  OP_SET_LOCAL
+  OP_SET_LOCAL,
+  OP_JUMP_IF_FALSE,  // [OpCode, offset].
+  OP_JUMP,
+  OP_LOOP,
 };
 
 enum class VMResult : uint8_t {

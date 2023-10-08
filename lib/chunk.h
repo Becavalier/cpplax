@@ -26,6 +26,9 @@ struct Chunk {
       addCode(it->first, it->second);
     }
   }
+  auto count(void) {
+    return code.size();
+  }
   void addCode(OpCodeType byte, size_t line) {
     try {
       if (lines.size() == 0 || lines.back() != line) {
@@ -72,18 +75,35 @@ struct ChunkDebugger {
     std::cout << name << std::endl;
     return offset + 1;
   }
-  static auto constantInstruction(const char* name, const Chunk& chunk, const typeVMCodeArray::const_iterator& offset) {
-    auto constantIdx = *(offset + 1);
-    printf("%-16s %4d '", name, constantIdx);
-    printValue(chunk.constants[constantIdx]);
-    printf("'\n");
-    return offset + 2;
-  }
-  static auto byteInstruction(const char* name, const Chunk& chunk, const typeVMCodeArray::const_iterator& offset) {
-    auto slot = *(offset + 1);
-    printf("%-16s %4d\n", name, slot);
-    return offset + 2;
-  }
+  static auto constantInstruction(
+    const char* name, 
+    const Chunk& chunk, 
+    const typeVMCodeArray::const_iterator& offset) {
+      auto constantIdx = *(offset + 1);
+      printf("%-16s %4d '", name, constantIdx);
+      printValue(chunk.constants[constantIdx]);
+      printf("'\n");
+      return offset + 2;
+    }
+  static auto byteInstruction(
+    const char* name, 
+    const Chunk& chunk, 
+    const typeVMCodeArray::const_iterator& offset) {
+      auto slot = *(offset + 1);
+      printf("%-16s %4d\n", name, slot);
+      return offset + 2;
+    }
+  static auto jumpInstruction(
+    const char* name,
+    int sign,
+    const Chunk& chunk, 
+    const typeVMCodeArray::const_iterator& offset) {
+      auto jump = static_cast<uint16_t>(*(offset + 1) << 8);
+      jump |= *(offset + 2);
+      const auto rel = offset - chunk.code.cbegin();
+      printf("%-16s %4ld -> %ld\n", name, rel, rel + 3 + sign * jump);
+      return offset + 3;
+    }
   static auto disassembleInstruction(const Chunk& chunk, const typeVMCodeArray::const_iterator& offset) {
     const auto offsetPos = offset - chunk.code.cbegin();
     printf("%04ld ", offsetPos);  // Print the offset location.
@@ -114,6 +134,9 @@ struct ChunkDebugger {
       case OpCode::OP_GREATER: return simpleInstruction("OP_GREATER", offset);
       case OpCode::OP_LESS: return simpleInstruction("OP_LESS", offset);
       case OpCode::OP_POP: return simpleInstruction("OP_POP", offset);
+      case OpCode::OP_JUMP: return jumpInstruction("OP_JUMP", 1, chunk, offset);
+      case OpCode::OP_JUMP_IF_FALSE: return jumpInstruction("OP_JUMP_IF_FALSE", 1, chunk, offset);
+      case OpCode::OP_LOOP: return jumpInstruction("OP_LOOP", -1, chunk, offset);
       default: {
         std::cout << "Unknow opcode: " << +instruction << '.' << std::endl;
         return offset + 1;

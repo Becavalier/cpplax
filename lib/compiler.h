@@ -79,7 +79,7 @@ struct Compiler {
     [TokenType::IDENTIFIER] = { &Compiler::variable, nullptr, Precedence::PREC_NONE },
     [TokenType::STRING] = { &Compiler::string, nullptr, Precedence::PREC_NONE },
     [TokenType::NUMBER] = { &Compiler::number, nullptr, Precedence::PREC_NONE },
-    [TokenType::AND] = { nullptr, nullptr, Precedence::PREC_NONE },
+    [TokenType::AND] = { nullptr, &Compiler::and_, Precedence::PREC_AND },
     [TokenType::CLASS] = { nullptr, nullptr, Precedence::PREC_NONE },
     [TokenType::ELSE] = { nullptr, nullptr, Precedence::PREC_NONE },
     [TokenType::FALSE] = { &Compiler::literal, nullptr, Precedence::PREC_NONE },
@@ -87,7 +87,7 @@ struct Compiler {
     [TokenType::FN] = { nullptr, nullptr, Precedence::PREC_NONE },
     [TokenType::IF] = { nullptr, nullptr, Precedence::PREC_NONE },
     [TokenType::NIL] = { &Compiler::literal, nullptr, Precedence::PREC_NONE },
-    [TokenType::OR] = { nullptr, nullptr, Precedence::PREC_NONE },
+    [TokenType::OR] = { nullptr, &Compiler::or_, Precedence::PREC_OR },
     [TokenType::RETURN] = { nullptr, nullptr, Precedence::PREC_NONE },
     [TokenType::SUPER] = { nullptr, nullptr, Precedence::PREC_NONE } ,
     [TokenType::THIS] = { nullptr, nullptr, Precedence::PREC_NONE },
@@ -246,7 +246,7 @@ struct Compiler {
       setOp = OpCode::OP_SET_LOCAL;
     } else {
       variableIdx = identifierConstant(name);
-      setOp = OpCode::OP_GET_GLOBAL;
+      getOp = OpCode::OP_GET_GLOBAL;
       setOp = OpCode::OP_SET_GLOBAL;
     }
     if (canAssign && match(TokenType::EQUAL)) {
@@ -343,8 +343,117 @@ struct Compiler {
       localCount--;
     }
   }
+  auto emitJump(OpCodeType instruction) {
+    emitByte(instruction);
+    emitByte(0xff);  // Set placeholder operands.
+    emitByte(0xff);
+    return static_cast<size_t>(chunk.count() - 2);  // Return the position to the placeholder.
+  }
+  void emitLoop(size_t loopStart) {
+    // Unconditionally jumps backwards by a given offset.
+    emitByte(OpCode::OP_LOOP);
+    auto offset = chunk.count() - loopStart + 2;
+    if (offset > UINT16_MAX) errorAtCurrent("loop body too large.");
+    emitByte((offset >> 8) & 0xff);
+    emitByte(offset & 0xff);
+  }
+  void patchJump(size_t offset) {
+    // -2 to adjust for the bytecode for the jump offset itself.
+    auto jump = chunk.count() - offset - 2; 
+    if (jump > UINT16_MAX) {
+      errorAtCurrent("too much code to jump over.");
+    }
+    chunk.code[offset] = (jump >> 8) & 0xff;  // Higer 8-bits offset.
+    chunk.code[offset + 1] = jump & 0xff;  // Lower 8-bits offset.
+  }
+  void ifStatement(void) {
+    consume(TokenType::LEFT_PAREN, "expect '(' after 'if'.");
+    expression();  // Compile the condition expression, leave the condition value on the stack.
+    consume(TokenType::RIGHT_PAREN, "expect ')' after condition.");
+    auto thenJump = emitJump(OpCode::OP_JUMP_IF_FALSE);
+    emitByte(OpCode::OP_POP);  // Pop the condition value before "then" branch.
+    statement();
+    auto elseJump = emitJump(OpCode::OP_JUMP);
+    patchJump(thenJump);  // Backpatching.
+    emitByte(OpCode::OP_POP);  // Pop the condition value before "else" branch.
+    if (match(TokenType::ELSE)) statement();
+    patchJump(elseJump);
+  }
+  void or_(bool) {
+    auto elseJump = emitJump(OpCode::OP_JUMP_IF_FALSE);
+    auto endJump = emitJump(OpCode::OP_JUMP);
+    patchJump(elseJump);
+    emitByte(OpCode::OP_POP);
+    parsePrecedence(Precedence::PREC_OR);
+    patchJump(endJump);
+  }
+  void and_(bool) {
+    auto endJump = emitJump(OpCode::OP_JUMP_IF_FALSE);
+    emitByte(OpCode::OP_POP);
+    parsePrecedence(Precedence::PREC_AND);  // Parse infix "and" with its right operand.
+    patchJump(endJump);
+  }
+  void whileStatement(void) {
+    auto loopStart = chunk.count();
+    consume(TokenType::LEFT_PAREN, "expect '(' after 'while'.");
+    expression();
+    consume(TokenType::RIGHT_PAREN, "expect ')' after condition.");
+    auto exitJump = emitJump(OpCode::OP_JUMP_IF_FALSE);
+    emitByte(OpCode::OP_POP);
+    statement();
+    emitLoop(loopStart);
+    patchJump(exitJump);
+    emitByte(OpCode::OP_POP);
+  }
+  void forStatement(void) {
+    beginScope();
+    consume(TokenType::LEFT_PAREN, "expect '(' after 'for'.");
+    if (match(TokenType::VAR)) {
+      varDeclaration();
+    } else if (!match(TokenType::SEMICOLON)) {
+      expressionStatement();
+    }
+
+    auto loopStart = chunk.count();
+    std::optional<size_t> exitJump;
+    if (!match(TokenType::SEMICOLON)) {  // Condition clause.
+      expression();
+      consume(TokenType::SEMICOLON, "eßxpect ';' after loop condition.");
+      // Jump out of the loop if the condition is false.
+      exitJump = emitJump(OpCode::OP_JUMP_IF_FALSE);
+      emitByte(OpCode::OP_POP);
+    }
+
+    if (!match(TokenType::RIGHT_PAREN)) {
+      auto bodyJump = emitJump(OpCode::OP_JUMP);
+      auto incrementStart = chunk.count();
+      expression();
+      emitByte(OpCode::OP_POP);
+      consume(TokenType::RIGHT_PAREN, "expect ')' after for clauses.");
+
+      emitLoop(loopStart);
+      loopStart = incrementStart;
+      patchJump(bodyJump);
+    }
+
+    statement();
+    emitLoop(loopStart);
+
+    if (exitJump.has_value()) {
+      patchJump(exitJump.value());
+      emitByte(OpCode::OP_POP);
+    }
+
+    endScope();
+  }
   void statement(void) {
-    if (match(TokenType::LEFT_BRACE)) {
+    if (match(TokenType::IF)) {
+      ifStatement();
+    } else if (match(TokenType::FOR)) {
+      forStatement();
+    } else if (match(TokenType::WHILE)) {
+      whileStatement();
+    } else if (match(TokenType::LEFT_BRACE)) {
       beginScope();
       block();
       endScope();

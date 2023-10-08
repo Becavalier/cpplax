@@ -75,6 +75,10 @@ struct VM {
   auto readByte(void) {
     return *ip++;
   }
+  auto readShort(void) {
+    ip += 2;
+    return static_cast<uint16_t>(*(ip - 2) << 8 | *(ip - 1));
+  }
   auto readConstant(void) {
     return chunk.constants[readByte()];
   }
@@ -193,13 +197,24 @@ struct VM {
           break;
         }
         case OpCode::OP_GET_LOCAL: {
-          auto slot = readByte();  // Take the operand from stack (local slot).
-          push(stack[slot]);  // Load the value.
+          push(stack[readByte()]);  // Take the operand from stack (local slot), and load the value.
           break;
         }
         case OpCode::OP_SET_LOCAL: {
-          auto slot = readByte();
-          stack[slot] = peek(0);
+          stack[readByte()] = peek(0);
+          break;
+        }
+        case OpCode::OP_JUMP_IF_FALSE: {
+          auto offset = readShort();
+          if (isFalsey(peek(0))) ip += offset;
+          break;
+        }
+        case OpCode::OP_LOOP: {
+          ip -= readShort();
+          break;
+        }
+        case OpCode::OP_JUMP: {
+          ip += readShort();
           break;
         }
       }
