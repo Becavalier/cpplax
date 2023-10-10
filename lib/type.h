@@ -1,8 +1,13 @@
 #ifndef	_TYPE_H
 #define	_TYPE_H
 
+/**
+ * Basic types for both compiler and interpreter.
+*/
+
 #include <variant>
 #include <string>
+#include <string_view>
 #include <memory>
 #include <vector>
 #include <unordered_map>
@@ -57,6 +62,7 @@ enum TokenType : uint8_t {
   WHILE, 
   SOURCE_EOF,
   TOTAL,
+  _ZOMBIE_,
 };
 
 /**
@@ -78,6 +84,7 @@ enum class ClassType : uint8_t {
 struct Invokable;
 struct ClassInstance;
 struct Token;
+struct Obj;
 using typeKeywordList = std::unordered_map<std::string_view, TokenType>;
 using typeScopeRecord = std::unordered_map<std::string_view, bool>;
 
@@ -111,6 +118,7 @@ enum OpCode : OpCodeType {
   OP_JUMP_IF_FALSE,  // [OpCode, offset].
   OP_JUMP,
   OP_LOOP,
+  OP_CALL,
 };
 
 enum class VMResult : uint8_t {
@@ -119,51 +127,15 @@ enum class VMResult : uint8_t {
   INTERPRET_RUNTIME_ERROR,
 };
 
-enum class HeapObjType : uint8_t {
+enum class ObjType : uint8_t {
+  OBJ_FUNCTION,
   OBJ_STRING,
 };
 
-struct HeapStringObj;
-struct HeapObj {
-  HeapObjType type;
-  HeapObj* next;  // Make up an intrusive list.
-  explicit HeapObj(HeapObjType type, HeapObj* next) : type(type), next(next) {}
-  HeapStringObj* toStringObj(void);
-  virtual ~HeapObj() {};
+enum class FunctionScope : uint8_t {
+  TYPE_BODY,
+  TYPE_TOP_LEVEL,
 };
-
-struct HeapStringObj : public HeapObj {
-  std::string str;
-  explicit HeapStringObj(std::string_view str, HeapObj** next) : HeapObj(HeapObjType::OBJ_STRING, *next), str(str) {
-    *next = this;
-  }
-  ~HeapStringObj() {
-    str.clear();
-  }
-};
-
-class InternedConstants  {
-  std::unordered_map<std::string_view, HeapObj*> internedConstants;
- public:
-  InternedConstants() = default;
-  HeapObj* add(std::string_view str, HeapObj** objs) {
-    const auto target = internedConstants.find(str);
-    if (target != internedConstants.end()) {
-      return target->second;  // Reuse the existing interned string obj.
-    } else {
-      const auto heapStr = new HeapStringObj { str, objs };
-      internedConstants[heapStr->str] = heapStr;
-      return heapStr;  // Generate a new sting obj on the heap.
-    }
-  }
-};
-
-struct Local {
-  const Token* name;
-  size_t depth;
-  bool initialized;
-};
-
 
 /**
  * Core runtime types
@@ -180,7 +152,7 @@ using typeRuntimeValue =
     std::shared_ptr<ClassInstance>,
     std::string,
     // VM & Compiler fieldds.
-    HeapObj*  // Pointer to the heap value.
+    Obj*  // Pointer to the heap value.
   >;
 using typeRuntimeValueArray = std::vector<typeRuntimeValue>;
 

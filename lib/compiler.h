@@ -9,11 +9,12 @@
 #include <unordered_map>
 #include <cstdint>
 #include <optional>
+#include "./macro.h"
 #include "./chunk.h"
 #include "./token.h"
 #include "./error.h"
-
-#define UINT8_COUNT (UINT8_MAX + 1)
+#include "./constant.h"
+#include "./object.h"
 
 struct Compiler;
 using typeParseFn = void (Compiler::*)(bool);
@@ -39,17 +40,24 @@ struct ParseRule {
   Precedence precedence;
 };
 
+struct Local {
+  const Token* name;
+  size_t depth;
+  bool initialized;
+};
+
 struct Compiler {
   bool panicMode = false;
-  std::vector<Token>& tokens;
-  std::vector<Token>::const_iterator current;
-  Chunk chunk;
-  HeapObj* objs;  // Points to the head of the heap object list.
+  FuncObj* compilingFunc = nullptr;
+  FunctionScope compilingScope = FunctionScope::TYPE_TOP_LEVEL;
+  Obj* objs = nullptr;  // Points to the head of the heap object list.
   InternedConstants* internedConstants;
   // locals.
   Local locals[UINT8_COUNT] = {};  // All the in-scope locals.
   size_t localCount = 0;  // Tracks how many locals are in scope.
   size_t scopeDepth = 0;  // The number of blocks surrounding the current bit of code we’re compiling.
+  // std::vector<Token>* tokens = nullptr;
+  std::vector<Token>::const_iterator current;
   /**
    * Rule table for "Pratt Parser". The columns are:
    * - The function to compile a prefix expression starting with a token of that type.
@@ -57,7 +65,7 @@ struct Compiler {
    * - The precedence of an infix expression that uses that token as an operator.
   */
   const ParseRule rules[TokenType::TOTAL] = {
-    [TokenType::LEFT_PAREN] = { &Compiler::grouping, nullptr, Precedence::PREC_NONE },
+    [TokenType::LEFT_PAREN] = { &Compiler::grouping, &Compiler::call, Precedence::PREC_CALL },
     [TokenType::RIGHT_PAREN] = { nullptr, nullptr, Precedence::PREC_NONE },
     [TokenType::LEFT_BRACE] = { nullptr, nullptr, Precedence::PREC_NONE }, 
     [TokenType::RIGHT_BRACE] = {nullptr, nullptr, Precedence::PREC_NONE },
@@ -96,16 +104,31 @@ struct Compiler {
     [TokenType::WHILE] = { nullptr, nullptr, Precedence::PREC_NONE },
     [TokenType::SOURCE_EOF] = { nullptr, nullptr, Precedence::PREC_NONE },
   };
-  explicit Compiler(std::vector<Token>& tokens) : tokens(tokens), current(tokens.cbegin()), objs(nullptr), internedConstants(new InternedConstants {}) {}
+  Compiler(std::vector<Token>::const_iterator tokenIt, InternedConstants* constantPool = nullptr, FunctionScope scope = FunctionScope::TYPE_TOP_LEVEL) : 
+    compilingFunc(new FuncObj {}),
+    compilingScope(scope),
+    internedConstants(constantPool == nullptr ? new InternedConstants {} : constantPool), 
+    current(tokenIt) {
+      if (scope != FunctionScope::TYPE_TOP_LEVEL) {
+        compilingFunc->name = internedConstants->add(previous().lexeme, &objs)->toStringObj();
+      }
+      Local* local = &locals[localCount++];  // Stack slot zero is for VM’s own internal use.
+      local->depth = 0;
+      local->name = nullptr;  // Empty name.
+    }
   Compiler(const Compiler&) = delete;
-  auto& peek(void) const {
+  Compiler(const Compiler&&) = delete; 
+  auto& currentChunk(void) {
+    return compilingFunc->chunk;
+  }
+  const Token& peek(void) const {
     return *current;
+  }
+  const Token& previous(void) {
+    return *(current - 1);
   }
   void advance(void) {
     ++current;
-  }
-  auto& previous(void) {
-    return *(current - 1);
   }
   void consume(TokenType type, const char* msg) {
     if (peek().type == type) {
@@ -126,20 +149,20 @@ struct Compiler {
     errorAt(previous(), msg);  // Report an error at the location of the just consumed token.
   }
   void emitByte(OpCodeType byte) {
-    chunk.addCode(byte, previous().line);
+    currentChunk().addCode(byte, previous().line);
   }
   void emitBytes(OpCodeType byteA, OpCodeType byteB) {
     emitByte(byteA);
     emitByte(byteB);
   }
   void emitByte(OpCodeType byte, size_t line) {
-    chunk.addCode(byte, line);
+    currentChunk().addCode(byte, line);
   }
   void emitConstant(typeRuntimeValue value) {
     emitBytes(OpCode::OP_CONSTANT, makeConstant(value));
   }
   OpCodeType makeConstant(typeRuntimeValue value) {
-    auto constantIdx = chunk.addConstant(value);
+    auto constantIdx = currentChunk().addConstant(value);
     if (constantIdx > UINT8_MAX) {
       errorAtPrevious("too many constants in one chunk.");
       constantIdx = 0;
@@ -175,9 +198,13 @@ struct Compiler {
   const ParseRule* getRule(TokenType type) {
     return &rules[type];
   }
+  void markInitialized(void) {
+    if (scopeDepth == 0) return;
+    locals[localCount - 1].initialized = true;
+  }
   void defineVariable(std::optional<OpCodeType> variable) {
     if (scopeDepth > 0) {
-      locals[localCount - 1].initialized = true;
+      markInitialized();
       return;
     }
     if (variable.has_value()) {
@@ -207,7 +234,7 @@ struct Compiler {
     // Detect the error that having two variables with the same name in the same local scope.
     for (auto i = localCount; i >= 1; i--) {
       auto local = &locals[i - 1];
-      if (local->initialized && local->depth < scopeDepth) {
+      if ((local->initialized && local->depth < scopeDepth) || local->name == nullptr) {
         break;
       }
       if (local->name->lexeme == name.lexeme) {
@@ -228,7 +255,7 @@ struct Compiler {
     for (auto i = localCount; i >= 1; i--) {
       const auto idx = i - 1;
       const auto local = &locals[idx];
-      if (name.lexeme == local->name->lexeme) {  // Find the last declared variable with the identifier.
+      if (local->name != nullptr && (name.lexeme == local->name->lexeme)) {  // Find the last declared variable with the identifier.
         if (!local->initialized) {
           errorAtPrevious("can't read local variable in its own initializer.");
         }
@@ -318,6 +345,24 @@ struct Compiler {
       default: return;
     }
   }
+  auto argumentList(void) {
+    uint8_t argCount = 0;
+    if (!check(TokenType::RIGHT_PAREN)) {
+      do {
+        expression();
+        if (argCount == 255) {
+          errorAtCurrent("can't have more than 255 arguments.");
+        }
+        argCount++;
+      } while (match(TokenType::COMMA));
+    }
+    consume(TokenType::RIGHT_PAREN, "expect ')' after arguments.");
+    return argCount;
+  }
+  void call(bool) {
+    auto argCount = argumentList();
+    emitBytes(OpCode::OP_CALL, argCount);
+  }
   void expression(void) {
     parsePrecedence(Precedence::PREC_ASSIGNMENT);
   }
@@ -347,24 +392,24 @@ struct Compiler {
     emitByte(instruction);
     emitByte(0xff);  // Set placeholder operands.
     emitByte(0xff);
-    return static_cast<size_t>(chunk.count() - 2);  // Return the position to the placeholder.
+    return static_cast<size_t>(currentChunk().count() - 2);  // Return the position to the placeholder.
   }
   void emitLoop(size_t loopStart) {
     // Unconditionally jumps backwards by a given offset.
     emitByte(OpCode::OP_LOOP);
-    auto offset = chunk.count() - loopStart + 2;
+    auto offset = currentChunk().count() - loopStart + 2;
     if (offset > UINT16_MAX) errorAtCurrent("loop body too large.");
     emitByte((offset >> 8) & 0xff);
     emitByte(offset & 0xff);
   }
   void patchJump(size_t offset) {
     // -2 to adjust for the bytecode for the jump offset itself.
-    auto jump = chunk.count() - offset - 2; 
+    auto jump = currentChunk().count() - offset - 2; 
     if (jump > UINT16_MAX) {
       errorAtCurrent("too much code to jump over.");
     }
-    chunk.code[offset] = (jump >> 8) & 0xff;  // Higer 8-bits offset.
-    chunk.code[offset + 1] = jump & 0xff;  // Lower 8-bits offset.
+    currentChunk().code[offset] = (jump >> 8) & 0xff;  // Higer 8-bits offset.
+    currentChunk().code[offset + 1] = jump & 0xff;  // Lower 8-bits offset.
   }
   void ifStatement(void) {
     consume(TokenType::LEFT_PAREN, "expect '(' after 'if'.");
@@ -394,7 +439,7 @@ struct Compiler {
     patchJump(endJump);
   }
   void whileStatement(void) {
-    auto loopStart = chunk.count();
+    auto loopStart = currentChunk().count();
     consume(TokenType::LEFT_PAREN, "expect '(' after 'while'.");
     expression();
     consume(TokenType::RIGHT_PAREN, "expect ')' after condition.");
@@ -413,37 +458,31 @@ struct Compiler {
     } else if (!match(TokenType::SEMICOLON)) {
       expressionStatement();
     }
-
-    auto loopStart = chunk.count();
+    auto loopStart = currentChunk().count();
     std::optional<size_t> exitJump;
     if (!match(TokenType::SEMICOLON)) {  // Condition clause.
       expression();
-      consume(TokenType::SEMICOLON, "eßxpect ';' after loop condition.");
+      consume(TokenType::SEMICOLON, "expect ';' after loop condition.");
       // Jump out of the loop if the condition is false.
       exitJump = emitJump(OpCode::OP_JUMP_IF_FALSE);
       emitByte(OpCode::OP_POP);
     }
-
     if (!match(TokenType::RIGHT_PAREN)) {
       auto bodyJump = emitJump(OpCode::OP_JUMP);
-      auto incrementStart = chunk.count();
+      auto incrementStart = currentChunk().count();
       expression();
       emitByte(OpCode::OP_POP);
       consume(TokenType::RIGHT_PAREN, "expect ')' after for clauses.");
-
       emitLoop(loopStart);
       loopStart = incrementStart;
       patchJump(bodyJump);
     }
-
     statement();
     emitLoop(loopStart);
-
     if (exitJump.has_value()) {
       patchJump(exitJump.value());
       emitByte(OpCode::OP_POP);
     }
-
     endScope();
   }
   void statement(void) {
@@ -471,8 +510,40 @@ struct Compiler {
     consume(TokenType::SEMICOLON, "expect ';' after variable declaration.");
     defineVariable(varConstantIdx);
   }
+  auto _function(void) {
+    beginScope();
+    consume(TokenType::LEFT_PAREN, "expect '(' after function name.");
+    if (!check(TokenType::RIGHT_PAREN)) {
+      do {
+        compilingFunc->arity++;
+        if (compilingFunc->arity > 255) {
+          errorAtCurrent("can't have more than 255 parameters.");
+        }
+        auto constant = parseVariable("expect parameter name.");
+        defineVariable(constant);
+      } while (match(TokenType::COMMA));
+    }
+    consume(TokenType::RIGHT_PAREN, "expect ')' after parameters.");
+    consume(TokenType::LEFT_BRACE, "expect '{' before function body.");
+    block();
+    return endCompiler();
+  }
+  void function(FunctionScope scope) {
+    Compiler compiler { current, internedConstants, scope };
+    auto compiledFunc = compiler._function();
+    current = compiler.current;
+    emitBytes(OpCode::OP_CONSTANT, makeConstant(compiledFunc));
+  }
+  void funDeclaration(void) {
+    auto global = parseVariable("expect function name.");
+    markInitialized();
+    function(FunctionScope::TYPE_BODY);
+    defineVariable(global);
+  }
   void declaration(void) {
-    if (match(TokenType::VAR)) {
+    if (match(TokenType::FN)) {
+      funDeclaration();
+    } else if (match(TokenType::VAR)) {
       varDeclaration();
     } else {
       statement();
@@ -497,21 +568,20 @@ struct Compiler {
       advance();
     }
   }
-  void endCompiler(void) {
-    emitByte(OpCode::OP_RETURN);  // End compiling.
+  FuncObj* endCompiler(void) {
+    emitByte(OpCode::OP_RETURN); 
+#ifdef DEBUG_PRINT_CODE
+    if (!Error::hadError) {
+      ChunkDebugger::disassembleChunk(currentChunk(), compilingFunc->name != nullptr ? compilingFunc->name->str.data() : "<script>");
+    }
+#endif 
+    return Error::hadError ? nullptr : compilingFunc;
   }
-  Chunk compile(void) {
+  auto compile(void) {
     while (!match(TokenType::SOURCE_EOF)) {
       declaration();
     }
-    endCompiler();
-#ifdef DEBUG_PRINT_CODE
-    if (!Error::hadError) {
-      ChunkDebugger::disassembleChunk(chunk, "code");
-    }
-#endif   
-    tokens.clear();
-    return chunk;
+    return endCompiler();
   }
 };
 

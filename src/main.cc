@@ -47,12 +47,14 @@ struct Lax {
 
       interpreter.interpret(ast);  // Interpret.
     } else {
-      std::cout << "- Compiler Mode -\n";
-      Compiler compiler { tokens };
-      const auto chunk = compiler.compile();  // Compile into byte codes.
+      std::cout << "- Compiler Mode -\n\n";
+      Compiler compiler { tokens.cbegin() };
+      // Compile into byte codes, returns a new "FuncObj" containing the compiled top-level code. 
+      const auto funcObj = compiler.compile(); 
       if (Error::hadError) return;
 
-      VM vm { chunk, compiler.objs, compiler.internedConstants };
+      tokens.clear();
+      VM vm { funcObj, compiler.objs, compiler.internedConstants };
       vm.interpret();
     }
   }

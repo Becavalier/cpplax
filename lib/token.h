@@ -16,7 +16,8 @@ struct Token {
   TokenType type;
   const std::string_view lexeme;
   const typeRuntimeValue literal;   // Tokens aren’t entirely homogeneous either.
-  size_t line;
+  size_t line; 
+  Token(): type(TokenType::_ZOMBIE_),lexeme(""), literal(std::monostate {}), line(0) {}
   Token(const TokenType& type, const std::string_view lexeme, const typeRuntimeValue& literal, size_t line) : type(type), lexeme(lexeme), literal(literal), line(line) {}
 };
 

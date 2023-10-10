@@ -11,6 +11,7 @@
 #include <iomanip>
 #include <cstdint>
 #include "./type.h"
+#include "./object.h"
 
 template<typename T> struct isVariant : std::false_type {};
 template<typename ...Args> struct isVariant<std::variant<Args...>> : std::true_type {};
@@ -46,11 +47,16 @@ std::string stringifyVariantValue(const T& literal) {
       return std::string { "nil" };
     } else if constexpr (std::is_same_v<K, std::string>) {
       return arg;
-    } else if constexpr (std::is_same_v<K, HeapObj*>) {
+    } else if constexpr (std::is_same_v<K, Obj*>) {
       switch (arg->type) {
-        case HeapObjType::OBJ_STRING: {
-          return static_cast<HeapStringObj*>(arg)->str;
+        case ObjType::OBJ_STRING: {
+          return static_cast<StringObj*>(arg)->str;
         }
+        case ObjType::OBJ_FUNCTION: {
+          const auto func = static_cast<FuncObj*>(arg);
+          return "<fn " + (func->name == nullptr ? "script" : func->name->str) + ">";
+        }
+        default: return std::string { "<rt-value>" };
       }
     } else {
       return std::string { "<rt-value>" };

@@ -2,32 +2,56 @@
 #define	_VM_H
 
 #define DEBUG_TRACE_EXECUTION
-#define STACK_MAX 65536
 
 #include <iostream>
+#include <cstdio>
 #include <array>
 #include <variant>
 #include <unordered_map>
 #include <cassert>
+#include <sstream>
+#include "./macro.h"
 #include "./chunk.h"
 #include "./type.h"
 #include "./compiler.h"
 #include "./error.h"
+#include "./constant.h"
+#include "./object.h"
+
+using typeVMStack = std::array<typeRuntimeValue, STACK_MAX>;
+
+/**
+ * Representing a single ongoing function call, -
+ * it tracks where on the stack the callee function’s locals begin, and where the caller should resume.
+*/
+struct CallFrame {
+  FuncObj* function;
+  typeVMCodeArray::const_iterator ip;
+  typeVMStack::iterator slots;
+};
+
+using typeVMFrames = std::array<CallFrame, FRAMES_MAX>;
 
 struct VM {
-  using typeVMStack = std::array<typeRuntimeValue, STACK_MAX>;
-  const Chunk& chunk;
+  size_t frameCount;  // Store the number of ongoing function calls.
   typeVMStack stack;
-  typeVMCodeArray::const_iterator ip;  // Points to the instruction about to be executed.
-  typeVMStack::iterator stackTop;  // Points just past the last used element.
-  HeapObj* objs;  // Points to the head of the heap object list.
+  typeVMFrames frames;
+  CallFrame* currentFrame;
+  typeVMStack::iterator stackTop;  // Points to the element that just past the last used element.
+  Obj* objs;  // Points to the head of the heap object list.
   InternedConstants* internedConstants;
-  std::unordered_map<HeapObj*, typeRuntimeValue> globals;
-  VM(const Chunk& chunk, HeapObj* objs, InternedConstants* internedConstants) : chunk(chunk), ip(chunk.code.cbegin()), stackTop(stack.begin()), objs(objs), internedConstants(internedConstants) {}
-  auto currentLine(void) const {
-    return chunk.getLine(ip - 1);
+  std::unordered_map<Obj*, typeRuntimeValue> globals;
+  VM(FuncObj* function, Obj* objs, InternedConstants* internedConstants) : frameCount(0), stackTop(stack.begin()), objs(objs), internedConstants(internedConstants) {
+    push(function);  // Save the calling function onto the stack.
+    // Add a frame for the calling function.
+    call(function, 0);
   }
-  auto top(void) {
+  VM(const VM&) = delete;
+  VM(const VM&&) = delete;
+  auto currentLine(void) {
+    return currentFrame->function->chunk.getLine(currentFrame->ip - 1);
+  }
+  auto top(void) const {
     return stackTop - 1;
   }
   void push(typeRuntimeValue v) {
@@ -43,11 +67,15 @@ struct VM {
   }
   void resetStack(void) {
     stackTop = stack.data();
+    frameCount = 0;
   }
-  void checkNumberOperands(int8_t n) const {
+  void throwRuntimeError(const std::string& msg) {
+    throw VMError { currentLine(), msg };
+  }
+  void checkNumberOperands(int8_t n) {
     while (--n >= 0) {
       if (!std::holds_alternative<typeRuntimeNumericValue>(peek(n)))
-        throw VMError { currentLine(), n > 1 ? "operand must be a number." : "operands must be numbers." };
+        throwRuntimeError(n > 1 ? "operand must be a number." : "operands must be numbers.");
     }
   }
   auto isFalsey(const typeRuntimeValue obj) const {
@@ -73,27 +101,53 @@ struct VM {
     freeInternedConstants();
   }
   auto readByte(void) {
-    return *ip++;
+    return *currentFrame->ip++;
   }
   auto readShort(void) {
-    ip += 2;
-    return static_cast<uint16_t>(*(ip - 2) << 8 | *(ip - 1));
+    currentFrame->ip += 2;
+    return static_cast<uint16_t>(*(currentFrame->ip - 2) << 8 | *(currentFrame->ip - 1));
   }
   auto readConstant(void) {
-    return chunk.constants[readByte()];
+    return currentFrame->function->chunk.constants[readByte()];
   }
-  auto readConstantOfExpectedType(HeapObjType type) {
-    const auto name = std::get<HeapObj*>(readConstant());
+  auto readConstantOfExpectedType(ObjType type) {
+    const auto name = std::get<Obj*>(readConstant());
     assert(name->type == type);  // Runtime assertion.
     return name;
   }
-  void testDefinedVariable(HeapObj* name, const std::string& errorMsg) {
-    if (!globals.contains(name)) throw VMError { currentLine(), errorMsg };
+  void testDefinedVariable(Obj* name, const std::string& errorMsg) {
+    if (!globals.contains(name)) throwRuntimeError(errorMsg);
   }
-  auto getDefinedVariable(HeapObj* name, const std::string& errorMsg) {
+  auto getDefinedVariable(Obj* name, const std::string& errorMsg) {
     const auto value = globals.find(name);
-    if (value == globals.end()) throw VMError { currentLine(), errorMsg };
+    if (value == globals.end()) throwRuntimeError(errorMsg);
     return value;
+  }
+  void call(FuncObj* function, uint8_t argCount) {
+    if (argCount != function->arity) {
+      throwRuntimeError((std::ostringstream {} << "expected " << +function->arity << " arguments but got " << +argCount << ".").str());
+    }
+    if (frameCount == FRAMES_MAX) {
+      throwRuntimeError("stack overflow.");
+    }
+    auto frame = &frames[frameCount];
+    frame->function = function;
+    frame->ip = function->chunk.code.cbegin();
+    frame->slots = stackTop - argCount - 1;
+    currentFrame = &frames[frameCount++];
+  } 
+  void callValue(typeRuntimeValue callee, uint8_t argCount) {
+    if (std::holds_alternative<Obj*>(callee)) {
+      const auto calleeObj = std::get<Obj*>(callee);
+      switch (calleeObj->type) {
+        case ObjType::OBJ_FUNCTION: {
+          call(static_cast<FuncObj*>(calleeObj), argCount);
+          return;
+        }
+        default: break;
+      }
+    }
+    throwRuntimeError("can only call functions and classes.");
   }
   VMResult run(void) {
     #define NUM_BINARY_OP(op) \
@@ -112,17 +166,17 @@ struct VM {
         printf(" ] ");
       }
       printf("<-\n");
-      ChunkDebugger::disassembleInstruction(chunk, ip);
+      ChunkDebugger::disassembleInstruction(currentFrame->function->chunk, currentFrame->ip);
 #endif
       const auto instruction = readByte();
       switch (instruction) {
         case OpCode::OP_ADD: {
           const auto y = pop();
           const auto x = pop();
-          if (std::holds_alternative<HeapObj*>(x) && std::holds_alternative<HeapObj*>(y)) {
-            const auto heapX = std::get<HeapObj*>(x);
-            const auto heapY = std::get<HeapObj*>(y);
-            if (heapX->type == HeapObjType::OBJ_STRING && heapY->type == HeapObjType::OBJ_STRING) {
+          if (std::holds_alternative<Obj*>(x) && std::holds_alternative<Obj*>(y)) {
+            const auto heapX = std::get<Obj*>(x);
+            const auto heapY = std::get<Obj*>(y);
+            if (heapX->type == ObjType::OBJ_STRING && heapY->type == ObjType::OBJ_STRING) {
               push(internedConstants->add(heapX->toStringObj()->str + heapY->toStringObj()->str, &objs));
               break;
             }
@@ -130,7 +184,7 @@ struct VM {
             push(std::get<typeRuntimeNumericValue>(x) +  std::get<typeRuntimeNumericValue>(y));
             break;
           }
-          throw VMError { currentLine(), "operands must be two numbers or two strings." };
+          throwRuntimeError("operands must be two numbers or two strings.");
         }
         case OpCode::OP_SUBTRACT: NUM_BINARY_OP(-); break;
         case OpCode::OP_MULTIPLY: NUM_BINARY_OP(*); break;
@@ -155,12 +209,12 @@ struct VM {
         case OpCode::OP_EQUAL: {
           const auto x = pop();
           const auto y = pop();
-          if (std::holds_alternative<HeapObj*>(x) && std::holds_alternative<HeapObj*>(y)) {
-            const auto heapX = std::get<HeapObj*>(x);
-            const auto heapY = std::get<HeapObj*>(y);
+          if (std::holds_alternative<Obj*>(x) && std::holds_alternative<Obj*>(y)) {
+            const auto heapX = std::get<Obj*>(x);
+            const auto heapY = std::get<Obj*>(y);
             if (heapX->type == heapY->type) {
               switch (heapX->type) {
-                case HeapObjType::OBJ_STRING: {
+                case ObjType::OBJ_STRING: {
                   push(heapX == heapY);
                   break;
                 }
@@ -181,42 +235,60 @@ struct VM {
         case OpCode::OP_LESS: NUM_BINARY_OP(<); break;
         case OpCode::OP_POP: pop(); break;
         case OpCode::OP_DEFINE_GLOBAL: {
-          globals[readConstantOfExpectedType(HeapObjType::OBJ_STRING)] = pop();
+          globals[readConstantOfExpectedType(ObjType::OBJ_STRING)] = pop();
           break;
         }
         case OpCode::OP_GET_GLOBAL: {
-          const auto name = readConstantOfExpectedType(HeapObjType::OBJ_STRING);
+          const auto name = readConstantOfExpectedType(ObjType::OBJ_STRING);
           const auto value = getDefinedVariable(name, "Undefined variable '" + name->toStringObj()->str + "'.");
           push(value->second);
           break;
         }
         case OpCode::OP_SET_GLOBAL: {
-          const auto name = readConstantOfExpectedType(HeapObjType::OBJ_STRING);
+          const auto name = readConstantOfExpectedType(ObjType::OBJ_STRING);
           testDefinedVariable(name, "Undefined variable '" + name->toStringObj()->str + "'.");
           globals[name] = peek(0);  // Assignment expression doesn’t pop the value off the stack.
           break;
         }
         case OpCode::OP_GET_LOCAL: {
-          push(stack[readByte()]);  // Take the operand from stack (local slot), and load the value.
+          push(*(currentFrame->slots + readByte()));  // Take the operand from stack (local slot), and load the value.
           break;
         }
         case OpCode::OP_SET_LOCAL: {
-          stack[readByte()] = peek(0);
+          *(currentFrame->slots + readByte()) = peek(0);
           break;
         }
         case OpCode::OP_JUMP_IF_FALSE: {
           auto offset = readShort();
-          if (isFalsey(peek(0))) ip += offset;
+          if (isFalsey(peek(0))) currentFrame->ip += offset;
           break;
         }
         case OpCode::OP_LOOP: {
-          ip -= readShort();
+          currentFrame->ip -= readShort();
           break;
         }
         case OpCode::OP_JUMP: {
-          ip += readShort();
+          currentFrame->ip += readShort();
           break;
         }
+        case OpCode::OP_CALL: {
+          const auto argCount = readByte();
+          callValue(peek(argCount), argCount);
+          break;
+        }
+      }
+    }
+  }
+  void stackTrace(void) {
+    for (auto i = frameCount; i >= 1; i--) {
+      auto frame = &frames[i - 1];
+      auto function = frame->function;
+      auto instruction = frame->ip - function->chunk.code.cbegin() - 1;
+      fprintf(stderr, "[Line %zu] in ", function->chunk.getLine(instruction));
+      if (function->name == NULL) {
+        fprintf(stderr, "script.\n");
+      } else {
+        fprintf(stderr, "%s().\n", function->name->str.c_str());
       }
     }
   }
@@ -227,6 +299,7 @@ struct VM {
       return result;
     } catch(const VMError& err) {
       Error::vmError(err);
+      stackTrace();
       return VMResult::INTERPRET_RUNTIME_ERROR;
     }
   }
