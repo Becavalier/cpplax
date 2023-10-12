@@ -16,7 +16,6 @@
 template<typename T> struct isVariant : std::false_type {};
 template<typename ...Args> struct isVariant<std::variant<Args...>> : std::true_type {};
 template<typename T> inline constexpr bool isVariantV = isVariant<T>::value;
-
 template <typename Enumeration>
 auto enumAsInteger(Enumeration const value) -> typename std::underlying_type<Enumeration>::type {
   return static_cast<typename std::underlying_type<Enumeration>::type>(value);
@@ -55,6 +54,9 @@ std::string stringifyVariantValue(const T& literal) {
         case ObjType::OBJ_FUNCTION: {
           const auto func = static_cast<FuncObj*>(arg);
           return "<fn " + (func->name == nullptr ? "script" : func->name->str) + ">";
+        }
+        case ObjType::OBJ_NATIVE: {
+          return std::string { "<fn native>" };
         }
         default: return std::string { "<rt-value>" };
       }

@@ -7,3 +7,7 @@ StringObj* Obj::toStringObj(void) {
 FuncObj* Obj::toFuncObj(void) {
   return static_cast<FuncObj*>(this);
 }
+
+NativeObj* Obj::toNativeObj(void) {
+  return static_cast<NativeObj*>(this);
+}

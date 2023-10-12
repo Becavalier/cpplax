@@ -12,7 +12,7 @@
 #include <memory>
 #include <vector>
 #include <string>
-#include <chrono>
+#include <ctime>
 #include <unordered_map>
 #include <variant>
 #include "./expr.h"
@@ -166,11 +166,7 @@ struct Interpreter : public ExprVisitor, public StmtVisitor {
       }
       size_t arity() override { return 0; };
       typeRuntimeValue invoke(Interpreter*, std::vector<typeRuntimeValue>&) override {
-        return static_cast<double>(
-          std::chrono::duration_cast<std::chrono::seconds>(
-            std::chrono::system_clock::now().time_since_epoch()
-          ).count()
-        );
+        return static_cast<double>(clock()) / CLOCKS_PER_SEC;
       };
     };
     class InternalFunPrintDef : public Invokable {

@@ -13,17 +13,17 @@ auto ChunkDebugger::constantInstruction(
   const Chunk& chunk, 
   const typeVMCodeArray::const_iterator& offset) {
     auto constantIdx = *(offset + 1);
-    printf("%-16s %4d '", name, constantIdx);
+    printf("%-16s index(%4d); const('", name, constantIdx);
     printValue(chunk.constants[constantIdx]);
-    printf("'\n");
+    printf("')\n");
     return offset + 2;
   }
 auto ChunkDebugger::byteInstruction(
   const char* name, 
-  const Chunk& chunk, 
+  const char* unit,
   const typeVMCodeArray::const_iterator& offset) {
     auto slot = *(offset + 1);
-    printf("%-16s %4d\n", name, slot);
+    printf("%-16s %s(%4d);\n", name, unit, slot);
     return offset + 2;
   }
 auto ChunkDebugger::jumpInstruction(
@@ -34,7 +34,7 @@ auto ChunkDebugger::jumpInstruction(
     auto jump = static_cast<uint16_t>(*(offset + 1) << 8);
     jump |= *(offset + 2);
     const auto rel = offset - chunk.code.cbegin();
-    printf("%-16s %4ld -> %ld\n", name, rel, rel + 3 + sign * jump);
+    printf("%-16s from(%ld) -> to(%ld)\n", name, rel, rel + 3 + sign * jump);
     return offset + 3;
   }
 typeVMCodeArray::const_iterator 
@@ -52,9 +52,9 @@ ChunkDebugger::disassembleInstruction(const Chunk& chunk, const typeVMCodeArray:
     case OpCode::OP_DEFINE_GLOBAL: return constantInstruction("OP_DEFINE_GLOBAL", chunk, offset);
     case OpCode::OP_GET_GLOBAL: return constantInstruction("OP_GET_GLOBAL", chunk, offset);
     case OpCode::OP_SET_GLOBAL: return constantInstruction("OP_SET_GLOBAL", chunk, offset);
-    case OpCode::OP_SET_LOCAL: return byteInstruction("OP_SET_LOCAL", chunk, offset);
-    case OpCode::OP_GET_LOCAL: return byteInstruction("OP_GET_LOCAL", chunk, offset);
-    case OpCode::OP_CALL: return byteInstruction("OP_CALL", chunk, offset);
+    case OpCode::OP_SET_LOCAL: return byteInstruction("OP_SET_LOCAL", "index", offset);
+    case OpCode::OP_GET_LOCAL: return byteInstruction("OP_GET_LOCAL", "index", offset);
+    case OpCode::OP_CALL: return byteInstruction("OP_CALL", "argno", offset);
     case OpCode::OP_NIL: return simpleInstruction("OP_NIL", offset);
     case OpCode::OP_TRUE: return simpleInstruction("OP_TRUE", offset);
     case OpCode::OP_FALSE: return simpleInstruction("OP_FALSE", offset);

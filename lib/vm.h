@@ -1,7 +1,7 @@
 #ifndef	_VM_H
 #define	_VM_H
 
-#define DEBUG_TRACE_EXECUTION
+// #define DEBUG_TRACE_EXECUTION
 
 #include <iostream>
 #include <cstdio>
@@ -17,8 +17,7 @@
 #include "./error.h"
 #include "./constant.h"
 #include "./object.h"
-
-using typeVMStack = std::array<typeRuntimeValue, STACK_MAX>;
+#include "./native.h"
 
 /**
  * Representing a single ongoing function call, -
@@ -27,7 +26,7 @@ using typeVMStack = std::array<typeRuntimeValue, STACK_MAX>;
 struct CallFrame {
   FuncObj* function;
   typeVMCodeArray::const_iterator ip;
-  typeVMStack::iterator slots;
+  typeVMStack::iterator slots;  // The starting position on the stack of each calling function.
 };
 
 using typeVMFrames = std::array<CallFrame, FRAMES_MAX>;
@@ -42,9 +41,10 @@ struct VM {
   InternedConstants* internedConstants;
   std::unordered_map<Obj*, typeRuntimeValue> globals;
   VM(FuncObj* function, Obj* objs, InternedConstants* internedConstants) : frameCount(0), stackTop(stack.begin()), objs(objs), internedConstants(internedConstants) {
+    defineNative("print", printNative, 1);
+    defineNative("clock", clockNative, 0);
     push(function);  // Save the calling function onto the stack.
-    // Add a frame for the calling function.
-    call(function, 0);
+    call(function, 0);  // Add a frame for the calling function.
   }
   VM(const VM&) = delete;
   VM(const VM&&) = delete;
@@ -141,13 +141,35 @@ struct VM {
       const auto calleeObj = std::get<Obj*>(callee);
       switch (calleeObj->type) {
         case ObjType::OBJ_FUNCTION: {
-          call(static_cast<FuncObj*>(calleeObj), argCount);
+          call(calleeObj->toFuncObj(), argCount);
+          return;
+        }
+        case ObjType::OBJ_NATIVE: {
+          const auto nativeFunc = calleeObj->toNativeObj();
+          if (nativeFunc->arity != argCount) {
+            throwRuntimeError("incorrect number of arguments passed to native function '" + nativeFunc->name->str + "'." );
+          }
+          const auto result = nativeFunc->function(argCount, stackTop - argCount);
+          stackTop -= argCount + 1;
+          push(result);
           return;
         }
         default: break;
       }
     }
     throwRuntimeError("can only call functions and classes.");
+  }
+  void defineNative(const char* name, NativeObj::typeNativeFn function, uint8_t arity) {
+    /**
+     * The "push" and "pop" instructions here are for GC. 
+     * Storing them on the value stack makes sure the objects won't be collected during initialization.
+    */
+    push(internedConstants->add(name, &objs));
+    const auto obj = std::get<Obj*>(stack[DEFAULT_IDX]);
+    push(new NativeObj { function, arity, obj->toStringObj(), });
+    globals[obj] = stack[DEFAULT_IDX + 1];
+    pop();
+    pop();
   }
   VMResult run(void) {
     #define NUM_BINARY_OP(op) \
@@ -195,11 +217,19 @@ struct VM {
           break;
         }
         case OpCode::OP_RETURN: {
-          return VMResult::INTERPRET_OK;
+          const auto result = pop();
+          frameCount--;
+          if (frameCount == 0) {
+            pop();  // Dicard the main script function.
+            return VMResult::INTERPRET_OK;
+          }
+          stackTop = currentFrame->slots;
+          push(result);
+          currentFrame = &frames[frameCount - 1];
+          break;
         }
         case OpCode::OP_CONSTANT: {
-          auto constant = readConstant();
-          push(constant);
+          push(readConstant());
           break;
         }
         case OpCode::OP_NIL: push(std::monostate {}); break;
@@ -240,13 +270,13 @@ struct VM {
         }
         case OpCode::OP_GET_GLOBAL: {
           const auto name = readConstantOfExpectedType(ObjType::OBJ_STRING);
-          const auto value = getDefinedVariable(name, "Undefined variable '" + name->toStringObj()->str + "'.");
+          const auto value = getDefinedVariable(name, "undefined variable '" + name->toStringObj()->str + "'.");
           push(value->second);
           break;
         }
         case OpCode::OP_SET_GLOBAL: {
           const auto name = readConstantOfExpectedType(ObjType::OBJ_STRING);
-          testDefinedVariable(name, "Undefined variable '" + name->toStringObj()->str + "'.");
+          testDefinedVariable(name, "undefined variable '" + name->toStringObj()->str + "'.");
           globals[name] = peek(0);  // Assignment expression doesn’t pop the value off the stack.
           break;
         }
@@ -272,6 +302,15 @@ struct VM {
           break;
         }
         case OpCode::OP_CALL: {
+          /**
+                      frame->slots           StackTop
+                            │                    │
+                            ▼                    ▼
+              0──────1──────2──────3──────4──────5
+              │script│  10  │ fn A │ arg1 │ arg2 │
+              └──────┴──────0──────1──────2──────3
+                            ┼   A() CallFrame    ┼
+          */
           const auto argCount = readByte();
           callValue(peek(argCount), argCount);
           break;

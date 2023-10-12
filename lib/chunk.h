@@ -74,10 +74,10 @@ struct ChunkDebugger {
   static void printValue(const typeRuntimeValue&);
   static auto simpleInstruction(const char*, const typeVMCodeArray::const_iterator&);
   static auto constantInstruction(const char*, const Chunk&, const typeVMCodeArray::const_iterator&);
-  static auto byteInstruction(const char*, const Chunk&, const typeVMCodeArray::const_iterator&);
+  static auto byteInstruction(const char*, const char*, const typeVMCodeArray::const_iterator&);
   static auto jumpInstruction(const char*, int, const Chunk&, const typeVMCodeArray::const_iterator&);
   static typeVMCodeArray::const_iterator disassembleInstruction(const Chunk&, const typeVMCodeArray::const_iterator&);
   static void disassembleChunk(const Chunk&, const char*);
 };
 
-#endif
+#endif 

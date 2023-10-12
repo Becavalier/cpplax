@@ -16,12 +16,14 @@
 
 struct StringObj;
 struct FuncObj;
+struct NativeObj;
 struct Obj {
   ObjType type;
   Obj* next;  // Make up an intrusive list.
   explicit Obj(ObjType type, Obj* next = nullptr) : type(type), next(next) {}
   StringObj* toStringObj(void);
   FuncObj* toFuncObj(void);
+  NativeObj* toNativeObj(void);
   virtual ~Obj() {};
 };
 
@@ -39,6 +41,15 @@ struct FuncObj : public Obj {
   StringObj* name;
   FuncObj() : Obj(ObjType::OBJ_FUNCTION), arity(0), name(nullptr) {}
   ~FuncObj() {}
+};
+
+struct NativeObj : public Obj {
+  using typeNativeFn = typeRuntimeValue (*)(uint8_t, typeVMStack::const_iterator);
+  uint8_t arity;
+  typeNativeFn function;
+  StringObj* name;
+  NativeObj(typeNativeFn function, uint8_t arity, StringObj* name) : Obj(ObjType::OBJ_NATIVE), arity(arity), function(function), name(name) {}
+  ~NativeObj() {}
 };
 
 #endif

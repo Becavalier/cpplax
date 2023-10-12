@@ -158,6 +158,10 @@ struct Compiler {
   void emitByte(OpCodeType byte, size_t line) {
     currentChunk().addCode(byte, line);
   }
+  void emitReturn(void) {
+    emitByte(OpCode::OP_NIL);
+    emitByte(OpCode::OP_RETURN);
+  }
   void emitConstant(typeRuntimeValue value) {
     emitBytes(OpCode::OP_CONSTANT, makeConstant(value));
   }
@@ -218,7 +222,6 @@ struct Compiler {
   void addLocal(const Token* name) {
     if (localCount == UINT8_COUNT) {
       errorAtCurrent("too many local variables in function.");
-      return;
     }
     auto local = &locals[localCount++];
     local->name = name;
@@ -265,22 +268,22 @@ struct Compiler {
     return std::nullopt;
   }
   void namedVariable(const Token& name, bool canAssign) {
-    OpCodeType setOp, getOp, variableIdx;
+    OpCodeType setOp, getOp, varIndex;
     const auto local = resolveLocal(name);
     if (local.has_value()) {
-      variableIdx = local.value(); 
+      varIndex = local.value(); 
       getOp = OpCode::OP_GET_LOCAL;
       setOp = OpCode::OP_SET_LOCAL;
     } else {
-      variableIdx = identifierConstant(name);
+      varIndex = identifierConstant(name);
       getOp = OpCode::OP_GET_GLOBAL;
       setOp = OpCode::OP_SET_GLOBAL;
     }
     if (canAssign && match(TokenType::EQUAL)) {
       expression();
-      emitBytes(setOp, variableIdx);
+      emitBytes(setOp, varIndex);
     } else {
-      emitBytes(getOp, variableIdx);
+      emitBytes(getOp, varIndex);
     }
   }
   void variable(bool canAssign) {
@@ -485,9 +488,23 @@ struct Compiler {
     }
     endScope();
   }
+  void returnStatement(void) {
+    if (compilingScope == FunctionScope::TYPE_TOP_LEVEL) {
+      errorAtPrevious("can't return from top-level code.");
+    }
+    if (match(TokenType::SEMICOLON)) {
+      emitReturn();
+    } else {
+      expression();
+      consume(TokenType::SEMICOLON, "expect ';' after return value.");
+      emitByte(OpCode::OP_RETURN);
+    }
+  }
   void statement(void) {
     if (match(TokenType::IF)) {
       ifStatement();
+    } else if (match(TokenType::RETURN)) {
+      returnStatement();
     } else if (match(TokenType::FOR)) {
       forStatement();
     } else if (match(TokenType::WHILE)) {
@@ -510,7 +527,7 @@ struct Compiler {
     consume(TokenType::SEMICOLON, "expect ';' after variable declaration.");
     defineVariable(varConstantIdx);
   }
-  auto _function(void) {
+  auto functionCore(void) {
     beginScope();
     consume(TokenType::LEFT_PAREN, "expect '(' after function name.");
     if (!check(TokenType::RIGHT_PAREN)) {
@@ -519,8 +536,7 @@ struct Compiler {
         if (compilingFunc->arity > 255) {
           errorAtCurrent("can't have more than 255 parameters.");
         }
-        auto constant = parseVariable("expect parameter name.");
-        defineVariable(constant);
+        defineVariable(parseVariable("expect parameter name."));
       } while (match(TokenType::COMMA));
     }
     consume(TokenType::RIGHT_PAREN, "expect ')' after parameters.");
@@ -529,8 +545,9 @@ struct Compiler {
     return endCompiler();
   }
   void function(FunctionScope scope) {
+    // Every time compiling a function body, a new "FuncObj" will be created and retruned.
     Compiler compiler { current, internedConstants, scope };
-    auto compiledFunc = compiler._function();
+    const auto compiledFunc = compiler.functionCore();
     current = compiler.current;
     emitBytes(OpCode::OP_CONSTANT, makeConstant(compiledFunc));
   }
@@ -569,7 +586,7 @@ struct Compiler {
     }
   }
   FuncObj* endCompiler(void) {
-    emitByte(OpCode::OP_RETURN); 
+    emitReturn();
 #ifdef DEBUG_PRINT_CODE
     if (!Error::hadError) {
       ChunkDebugger::disassembleChunk(currentChunk(), compilingFunc->name != nullptr ? compilingFunc->name->str.data() : "<script>");

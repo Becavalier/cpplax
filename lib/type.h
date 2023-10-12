@@ -12,6 +12,7 @@
 #include <vector>
 #include <unordered_map>
 #include <iostream>
+#include "./macro.h"
 
 using typeRuntimeNumericValue= double;
 
@@ -130,6 +131,7 @@ enum class VMResult : uint8_t {
 enum class ObjType : uint8_t {
   OBJ_FUNCTION,
   OBJ_STRING,
+  OBJ_NATIVE,
 };
 
 enum class FunctionScope : uint8_t {
@@ -137,9 +139,6 @@ enum class FunctionScope : uint8_t {
   TYPE_TOP_LEVEL,
 };
 
-/**
- * Core runtime types
-*/
 using typeRuntimeValue = 
   std::variant<
     // Common fields.
@@ -155,5 +154,6 @@ using typeRuntimeValue =
     Obj*  // Pointer to the heap value.
   >;
 using typeRuntimeValueArray = std::vector<typeRuntimeValue>;
+using typeVMStack = std::array<typeRuntimeValue, STACK_MAX>;
 
 #endif
