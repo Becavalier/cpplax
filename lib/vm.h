@@ -1,7 +1,7 @@
 #ifndef	_VM_H
 #define	_VM_H
 
-// #define DEBUG_TRACE_EXECUTION
+#define DEBUG_TRACE_EXECUTION
 
 #include <iostream>
 #include <cstdio>
@@ -24,7 +24,7 @@
  * it tracks where on the stack the callee function’s locals begin, and where the caller should resume.
 */
 struct CallFrame {
-  FuncObj* function;
+  Obj* frameEntity;
   typeVMCodeArray::const_iterator ip;
   typeVMStack::iterator slots;  // The starting position on the stack of each calling function.
 };
@@ -35,21 +35,22 @@ struct VM {
   size_t frameCount;  // Store the number of ongoing function calls.
   typeVMStack stack;
   typeVMFrames frames;
-  CallFrame* currentFrame;
   typeVMStack::iterator stackTop;  // Points to the element that just past the last used element.
   Obj* objs;  // Points to the head of the heap object list.
   InternedConstants* internedConstants;
   std::unordered_map<Obj*, typeRuntimeValue> globals;
+  UpvalueObj* openUpvalues = nullptr;
+  CallFrame* currentFrame;
   VM(FuncObj* function, Obj* objs, InternedConstants* internedConstants) : frameCount(0), stackTop(stack.begin()), objs(objs), internedConstants(internedConstants) {
     defineNative("print", printNative, 1);
     defineNative("clock", clockNative, 0);
-    push(function);  // Save the calling function onto the stack.
+    push(function);  // Save the top-level function onto the stack.
     call(function, 0);  // Add a frame for the calling function.
   }
   VM(const VM&) = delete;
   VM(const VM&&) = delete;
   auto currentLine(void) {
-    return currentFrame->function->chunk.getLine(currentFrame->ip - 1);
+    return retrieveFuncObj(currentFrame->frameEntity)->chunk.getLine(currentFrame->ip - 1);
   }
   auto top(void) const {
     return stackTop - 1;
@@ -61,7 +62,7 @@ struct VM {
   auto peek(size_t distance) const {
     return *(stackTop - 1 - distance);
   }
-  auto pop(void) {
+  typeRuntimeValue& pop(void) {
     --stackTop;
     return *stackTop;
   }
@@ -108,7 +109,7 @@ struct VM {
     return static_cast<uint16_t>(*(currentFrame->ip - 2) << 8 | *(currentFrame->ip - 1));
   }
   auto readConstant(void) {
-    return currentFrame->function->chunk.constants[readByte()];
+    return retrieveFuncObj(currentFrame->frameEntity)->chunk.constants[readByte()];
   }
   auto readConstantOfExpectedType(ObjType type) {
     const auto name = std::get<Obj*>(readConstant());
@@ -123,29 +124,25 @@ struct VM {
     if (value == globals.end()) throwRuntimeError(errorMsg);
     return value;
   }
-  void call(FuncObj* function, uint8_t argCount) {
+  void call(Obj* obj, uint8_t argCount) {
+    const auto function = retrieveFuncObj(obj);
     if (argCount != function->arity) {
       throwRuntimeError((std::ostringstream {} << "expected " << +function->arity << " arguments but got " << +argCount << ".").str());
     }
     if (frameCount == FRAMES_MAX) {
       throwRuntimeError("stack overflow.");
     }
-    auto frame = &frames[frameCount];
-    frame->function = function;
-    frame->ip = function->chunk.code.cbegin();
-    frame->slots = stackTop - argCount - 1;
     currentFrame = &frames[frameCount++];
+    currentFrame->frameEntity = obj;
+    currentFrame->ip = function->chunk.code.cbegin();
+    currentFrame->slots = stackTop - argCount - 1;
   } 
   void callValue(typeRuntimeValue callee, uint8_t argCount) {
     if (std::holds_alternative<Obj*>(callee)) {
       const auto calleeObj = std::get<Obj*>(callee);
       switch (calleeObj->type) {
-        case ObjType::OBJ_FUNCTION: {
-          call(calleeObj->toFuncObj(), argCount);
-          return;
-        }
         case ObjType::OBJ_NATIVE: {
-          const auto nativeFunc = calleeObj->toNativeObj();
+          const auto nativeFunc = castNativeObj(calleeObj);
           if (nativeFunc->arity != argCount) {
             throwRuntimeError("incorrect number of arguments passed to native function '" + nativeFunc->name->str + "'." );
           }
@@ -154,7 +151,10 @@ struct VM {
           push(result);
           return;
         }
-        default: break;
+        default: {
+          call(calleeObj, argCount);  // OBJ_FUNCTION, OBJ_CLOSURE.
+          return;
+        };
       }
     }
     throwRuntimeError("can only call functions and classes.");
@@ -166,10 +166,36 @@ struct VM {
     */
     push(internedConstants->add(name, &objs));
     const auto obj = std::get<Obj*>(stack[DEFAULT_IDX]);
-    push(new NativeObj { function, arity, obj->toStringObj(), });
+    push(new NativeObj { function, arity, castStringObj(obj), });
     globals[obj] = stack[DEFAULT_IDX + 1];
     pop();
     pop();
+  }
+  UpvalueObj* captureUpvalue(typeRuntimeValue* local) {
+    UpvalueObj* prevUpvalue = nullptr;
+    auto upvalue = openUpvalues;
+    while (upvalue != nullptr && upvalue->location > local) {  // Searching from stack top to bottom.
+      prevUpvalue = upvalue;
+      upvalue = upvalue->next;
+    }
+    if (upvalue != nullptr && upvalue->location == local) {
+      return upvalue;
+    }
+    const auto createdUpvalue = new UpvalueObj { local, upvalue };
+    if (prevUpvalue == nullptr) {
+      openUpvalues = createdUpvalue;  // Empty list.
+    } else {
+      prevUpvalue->next = createdUpvalue;  // Insert into the list at a right position.
+    }
+    return createdUpvalue;
+  }
+  void closeUpvalues(typeRuntimeValue* last) {
+    while (openUpvalues != nullptr && openUpvalues->location >= last) {
+      auto upvalue = openUpvalues;
+      upvalue->closed = *upvalue->location;  // Save closed upvalue onto the heap "UpvalueObj" object.
+      upvalue->location = &upvalue->closed;
+      openUpvalues = upvalue->next;
+    }
   }
   VMResult run(void) {
     #define NUM_BINARY_OP(op) \
@@ -184,11 +210,12 @@ struct VM {
       printf("          ■ ");
       for (auto it = stack.cbegin(); it < stackTop; it++) {
         printf("[ ");
-        ChunkDebugger::printValue(*it);
+        printValue(*it);
         printf(" ] ");
       }
       printf("<-\n");
-      ChunkDebugger::disassembleInstruction(currentFrame->function->chunk, currentFrame->ip);
+      auto currentIp = currentFrame->ip;
+      ChunkDebugger::disassembleInstruction(retrieveFuncObj(currentFrame->frameEntity)->chunk, currentIp);
 #endif
       const auto instruction = readByte();
       switch (instruction) {
@@ -199,7 +226,7 @@ struct VM {
             const auto heapX = std::get<Obj*>(x);
             const auto heapY = std::get<Obj*>(y);
             if (heapX->type == ObjType::OBJ_STRING && heapY->type == ObjType::OBJ_STRING) {
-              push(internedConstants->add(heapX->toStringObj()->str + heapY->toStringObj()->str, &objs));
+              push(internedConstants->add(castStringObj(heapX)->str + castStringObj(heapY)->str, &objs));
               break;
             }
           } else {
@@ -218,12 +245,13 @@ struct VM {
         }
         case OpCode::OP_RETURN: {
           const auto result = pop();
+          closeUpvalues(currentFrame->slots);
           frameCount--;
           if (frameCount == 0) {
             pop();  // Dicard the main script function.
             return VMResult::INTERPRET_OK;
           }
-          stackTop = currentFrame->slots;
+          stackTop = currentFrame->slots;  // Discard all the unused locals.
           push(result);
           currentFrame = &frames[frameCount - 1];
           break;
@@ -270,13 +298,13 @@ struct VM {
         }
         case OpCode::OP_GET_GLOBAL: {
           const auto name = readConstantOfExpectedType(ObjType::OBJ_STRING);
-          const auto value = getDefinedVariable(name, "undefined variable '" + name->toStringObj()->str + "'.");
+          const auto value = getDefinedVariable(name, "undefined variable '" + castStringObj(name)->str + "'.");
           push(value->second);
           break;
         }
         case OpCode::OP_SET_GLOBAL: {
           const auto name = readConstantOfExpectedType(ObjType::OBJ_STRING);
-          testDefinedVariable(name, "undefined variable '" + name->toStringObj()->str + "'.");
+          testDefinedVariable(name, "undefined variable '" + castStringObj(name)->str + "'.");
           globals[name] = peek(0);  // Assignment expression doesn’t pop the value off the stack.
           break;
         }
@@ -315,13 +343,42 @@ struct VM {
           callValue(peek(argCount), argCount);
           break;
         }
+        case OpCode::OP_GET_UPVALUE: {
+          const auto slot = readByte();
+          push(*castClosureObj(currentFrame->frameEntity)->upvalues[slot]->location);
+          break;
+        }
+        case OpCode::OP_SET_UPVALUE: {
+          const auto slot = readByte();
+          *castClosureObj(currentFrame->frameEntity)->upvalues[slot]->location = peek(0);
+          break;
+        }
+        case OpCode::OP_CLOSURE: {
+          auto closure = new ClosureObj { retrieveFuncObj(std::get<Obj*>(readConstant())) };
+          push(closure);
+          for (uint32_t i = 0; i < closure->upvalueCount; i++) {
+            uint8_t isLocal = readByte();
+            uint8_t index = readByte();
+            if (isLocal == 1) {
+              closure->upvalues[i] = captureUpvalue(&*(currentFrame->slots + index));
+            } else {
+              closure->upvalues[i] = castClosureObj(currentFrame->frameEntity)->upvalues[index];
+            }
+          }
+          break;
+        }
+        case OpCode::OP_CLOSE_UPVALUE: {
+          closeUpvalues(&*(stackTop - 1));  // Hoisting the local to heap.
+          pop();  // Then, discard it from the stack.
+          break;
+        }
       }
     }
   }
   void stackTrace(void) {
     for (auto i = frameCount; i >= 1; i--) {
       auto frame = &frames[i - 1];
-      auto function = frame->function;
+      auto function = retrieveFuncObj(frame->frameEntity);
       auto instruction = frame->ip - function->chunk.code.cbegin() - 1;
       fprintf(stderr, "[Line %zu] in ", function->chunk.getLine(instruction));
       if (function->name == NULL) {
@@ -343,5 +400,7 @@ struct VM {
     }
   }
 };
+
+CallFrame* currentFrame = nullptr;
 
 #endif

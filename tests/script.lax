@@ -1,9 +1,14 @@
-
-fn fib(n) {
-  if (n < 2) return n;
-  return fib(n - 2) + fib(n - 1);
+fn outer() {
+  var x = "outsid123e";
+  {
+    var a =123;
+    fn inner() {
+      a = 200;
+      print(a);
+    }
+    return inner;
+  }
 }
-print("12312");
-var start = clock();
-print(fib(35));
-print(clock() - start);
+
+var closure = outer();
+closure();

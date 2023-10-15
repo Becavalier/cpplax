@@ -79,6 +79,7 @@ arguments      → expression ( "," expression )* ;
 - [ ] [Interpreter] Look up variables via indices in the corresponding environment.
 - [ ] [Compiler] Optimize OpCodes for logical operators and branching conditions.
 - [ ] [Compiler] Just-in-time compilation.
+- [ ] [Compiler] Optimize Closure with "lambda lifting" / "closure conversion".
 
 
 ### Features

@@ -30,7 +30,10 @@ template<typename T>
 std::string stringifyVariantValue(const T& literal) {
   static_assert(isVariantV<T>);
   if (literal.valueless_by_exception()) return "nil";
-  return std::visit([](auto&& arg) {
+  const auto printFunction = [](FuncObj* func) -> auto {
+    return "<fn " + (func->name == nullptr ? "script" : func->name->str) + ">";
+  };
+  return std::visit([&](auto&& arg) {
     using K = std::decay_t<decltype(arg)>;
     if constexpr (std::is_same_v<K, double>) {
       std::ostringstream oss;
@@ -52,11 +55,16 @@ std::string stringifyVariantValue(const T& literal) {
           return static_cast<StringObj*>(arg)->str;
         }
         case ObjType::OBJ_FUNCTION: {
-          const auto func = static_cast<FuncObj*>(arg);
-          return "<fn " + (func->name == nullptr ? "script" : func->name->str) + ">";
+          return printFunction(retrieveFuncObj(arg));
         }
         case ObjType::OBJ_NATIVE: {
           return std::string { "<fn native>" };
+        }
+        case ObjType::OBJ_CLOSURE: {
+          return printFunction(castClosureObj(arg)->function);
+        }
+        case ObjType::OBJ_UPVALUE: {
+          return std::string { "upvalue" };
         }
         default: return std::string { "<rt-value>" };
       }
@@ -64,6 +72,10 @@ std::string stringifyVariantValue(const T& literal) {
       return std::string { "<rt-value>" };
     }
   }, literal);
+}
+
+inline void printValue(const typeRuntimeValue& v) {
+  std::cout << stringifyVariantValue(v);
 }
 
 std::string unescapeStr(const std::string&);

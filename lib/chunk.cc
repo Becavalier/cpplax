@@ -1,44 +1,42 @@
 #include "./chunk.h"
 #include "./helper.h"
 
-void ChunkDebugger::printValue(const typeRuntimeValue& v) {
-  std::cout << stringifyVariantValue(v);
-}
-auto ChunkDebugger::simpleInstruction(const char* name, const typeVMCodeArray::const_iterator& offset) {
-  std::cout << name << std::endl;
-  return offset + 1;
-}
-auto ChunkDebugger::constantInstruction(
+void ChunkDebugger::simpleInstruction(
   const char* name, 
+  typeVMCodeArray::const_iterator& offset) {
+  std::cout << name << std::endl;
+  offset += 1;
+}
+void ChunkDebugger::constantInstruction(
+  const char* name,
   const Chunk& chunk, 
-  const typeVMCodeArray::const_iterator& offset) {
-    auto constantIdx = *(offset + 1);
+  typeVMCodeArray::const_iterator& offset) {
+    const auto constantIdx = *(offset + 1);
     printf("%-16s index(%4d); const('", name, constantIdx);
     printValue(chunk.constants[constantIdx]);
     printf("')\n");
-    return offset + 2;
+    offset += 2;
   }
-auto ChunkDebugger::byteInstruction(
+void ChunkDebugger::byteInstruction(
   const char* name, 
   const char* unit,
-  const typeVMCodeArray::const_iterator& offset) {
+  typeVMCodeArray::const_iterator& offset) {
     auto slot = *(offset + 1);
     printf("%-16s %s(%4d);\n", name, unit, slot);
-    return offset + 2;
+    offset += 2;
   }
-auto ChunkDebugger::jumpInstruction(
+void ChunkDebugger::jumpInstruction(
   const char* name,
   int sign,
   const Chunk& chunk, 
-  const typeVMCodeArray::const_iterator& offset) {
+  typeVMCodeArray::const_iterator& offset) {
     auto jump = static_cast<uint16_t>(*(offset + 1) << 8);
     jump |= *(offset + 2);
     const auto rel = offset - chunk.code.cbegin();
     printf("%-16s from(%ld) -> to(%ld)\n", name, rel, rel + 3 + sign * jump);
-    return offset + 3;
+    offset += 3;
   }
-typeVMCodeArray::const_iterator 
-ChunkDebugger::disassembleInstruction(const Chunk& chunk, const typeVMCodeArray::const_iterator& offset) {
+void ChunkDebugger::disassembleInstruction(const Chunk& chunk, typeVMCodeArray::const_iterator& offset) {
   const auto offsetPos = offset - chunk.code.cbegin();
   printf("%04ld ", offsetPos);  // Print the offset location.
   if (offsetPos > 0 && chunk.getLine(offsetPos) == chunk.getLine(offsetPos - 1)) {
@@ -72,9 +70,29 @@ ChunkDebugger::disassembleInstruction(const Chunk& chunk, const typeVMCodeArray:
     case OpCode::OP_JUMP: return jumpInstruction("OP_JUMP", 1, chunk, offset);
     case OpCode::OP_JUMP_IF_FALSE: return jumpInstruction("OP_JUMP_IF_FALSE", 1, chunk, offset);
     case OpCode::OP_LOOP: return jumpInstruction("OP_LOOP", -1, chunk, offset);
+    case OpCode::OP_CLOSURE: {
+      offset++;
+      const auto constantIdx = *offset++;
+      const auto& constant = chunk.constants[constantIdx];
+      printf("%-16s %4d ", "OP_CLOSURE", constantIdx);
+      printValue(constant);
+      printf("\n");
+      const auto function = retrieveFuncObj(std::get<Obj*>(constant));
+      for (uint32_t i = 0; i < function->upvalueCount; i++) {
+        auto isLocal = *offset++;
+        auto index = *offset++; 
+        const auto addrPos = offset - 2 - chunk.code.cbegin();
+        printf("%04ld    |                     %s %d\n", addrPos, isLocal == 1 ? "local" : "upvalue", index);
+      }
+      offset += 2;
+      return;
+    }
+    case OpCode::OP_GET_UPVALUE: return byteInstruction("OP_GET_UPVALUE", "index", offset);
+    case OpCode::OP_SET_UPVALUE: return byteInstruction("OP_SET_UPVALUE", "index", offset);
+    case OpCode::OP_CLOSE_UPVALUE: return simpleInstruction("OP_CLOSE_UPVALUE", offset);
     default: {
       std::cout << "Unknow opcode: " << +instruction << '.' << std::endl;
-      return offset + 1;
+      offset += 1;
     }
   }
 }
@@ -83,7 +101,7 @@ void ChunkDebugger::disassembleChunk(const Chunk& chunk, const char* name) {
   const auto& code = chunk.code;
   auto offset = code.cbegin();
   while (offset != code.cend()) {
-    offset = disassembleInstruction(chunk, offset);
+    disassembleInstruction(chunk, offset);
   }
   std::cout << std::endl;
 }

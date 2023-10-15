@@ -43,7 +43,13 @@ struct ParseRule {
 struct Local {
   const Token* name;
   size_t depth;
-  bool initialized;
+  bool isCaptured = false;
+  bool initialized = false;
+};
+
+struct Upvalue {
+  uint8_t index;  // Which local slot the upvalue is capturing.
+  bool isLocal;
 };
 
 struct Compiler {
@@ -52,12 +58,12 @@ struct Compiler {
   FunctionScope compilingScope = FunctionScope::TYPE_TOP_LEVEL;
   Obj* objs = nullptr;  // Points to the head of the heap object list.
   InternedConstants* internedConstants;
-  // locals.
+  Upvalue upvalues[UINT8_COUNT] = {};
   Local locals[UINT8_COUNT] = {};  // All the in-scope locals.
   size_t localCount = 0;  // Tracks how many locals are in scope.
   size_t scopeDepth = 0;  // The number of blocks surrounding the current bit of code we’re compiling.
-  // std::vector<Token>* tokens = nullptr;
   std::vector<Token>::const_iterator current;
+  Compiler* enclosing;
   /**
    * Rule table for "Pratt Parser". The columns are:
    * - The function to compile a prefix expression starting with a token of that type.
@@ -103,14 +109,15 @@ struct Compiler {
     [TokenType::VAR] = { nullptr, nullptr, Precedence::PREC_NONE },
     [TokenType::WHILE] = { nullptr, nullptr, Precedence::PREC_NONE },
     [TokenType::SOURCE_EOF] = { nullptr, nullptr, Precedence::PREC_NONE },
-  };
-  Compiler(std::vector<Token>::const_iterator tokenIt, InternedConstants* constantPool = nullptr, FunctionScope scope = FunctionScope::TYPE_TOP_LEVEL) : 
+  }; 
+  Compiler(std::vector<Token>::const_iterator tokenIt, InternedConstants* constantPool = nullptr, FunctionScope scope = FunctionScope::TYPE_TOP_LEVEL, Compiler* enclosingCompiler = nullptr) : 
     compilingFunc(new FuncObj {}),
     compilingScope(scope),
     internedConstants(constantPool == nullptr ? new InternedConstants {} : constantPool), 
-    current(tokenIt) {
+    current(tokenIt),
+    enclosing(enclosingCompiler) {
       if (scope != FunctionScope::TYPE_TOP_LEVEL) {
-        compilingFunc->name = internedConstants->add(previous().lexeme, &objs)->toStringObj();
+        compilingFunc->name = castStringObj(internedConstants->add(previous().lexeme, &objs));
       }
       Local* local = &locals[localCount++];  // Stack slot zero is for VM’s own internal use.
       local->depth = 0;
@@ -206,13 +213,13 @@ struct Compiler {
     if (scopeDepth == 0) return;
     locals[localCount - 1].initialized = true;
   }
-  void defineVariable(std::optional<OpCodeType> variable) {
+  void defineVariable(std::optional<OpCodeType> varIdx) {
     if (scopeDepth > 0) {
       markInitialized();
       return;
     }
-    if (variable.has_value()) {
-      emitBytes(OpCode::OP_DEFINE_GLOBAL, variable.value());  // OpCode for defining the variable and storing its initial value.
+    if (varIdx.has_value()) {
+      emitBytes(OpCode::OP_DEFINE_GLOBAL, varIdx.value());  // OpCode for defining the variable and storing its initial value.
     }
   }
   auto identifierConstant(const Token& token) {
@@ -226,12 +233,9 @@ struct Compiler {
     auto local = &locals[localCount++];
     local->name = name;
     local->depth = scopeDepth;
-    local->initialized = false;
   }
   void declareVariable(void) {
     if (scopeDepth == 0) return;
-
-    // Add the local variable to the compiler’s list of variables in the current scope.
     const auto& name = previous();
 
     // Detect the error that having two variables with the same name in the same local scope.
@@ -267,14 +271,75 @@ struct Compiler {
     }
     return std::nullopt;
   }
+  OpCodeType addUpvalue(OpCodeType index, bool isLocal) {
+    const auto upvalueCount = compilingFunc->upvalueCount;
+
+    // Search and reuse the existing upvalues.
+    for (uint32_t i = 0; i < upvalueCount; i++) {
+      auto upvalue = &upvalues[i];
+      if (upvalue->index == index && upvalue->isLocal == isLocal) {
+        return i;
+      }
+    }
+    if (upvalueCount == UINT8_COUNT) {
+      errorAtCurrent("too many closure variables in function.");
+      return 0;
+    }
+    upvalues[upvalueCount].isLocal = isLocal;
+    upvalues[upvalueCount].index = index;
+    return compilingFunc->upvalueCount++;  // Return the index of the upvalue.
+  }
+  std::optional<OpCodeType> resolveUpvalue(const Token& name) {
+    /**
+     * Compiler: upvalue [isLocal, index].
+     * VM: UpvalueObj [next, location], will be managed in a sorted linked list.
+     * 
+                          inner.upvalue <= middle.upvalue
+                            │                          │
+                            ▼                          │
+              outer()     middle()     inner()         |
+            ┌─┬─────┐  ┌─┬───────┐  ┌─┬───────┐        │
+            │0│local│◄─┤0│upvalue│  │0│upvalue│        │
+            └─┴─────┘  └─┴───────┘  └─┴───────┘        │
+                  ▲      isLocal: 1   isLocal: 0 ──────┘
+                  │      index: 0 │   index: 0
+                  │               │
+      vm: middle.upvalue <= *(outer.slot + index)
+    */
+    if (enclosing == nullptr) return std::nullopt;
+
+    // Looking for the variable in the enclosing function.
+    const auto local = enclosing->resolveLocal(name);
+    if (local.has_value()) {
+      const auto localIdx = local.value();
+      enclosing->locals[localIdx].isCaptured = true;
+      return addUpvalue(localIdx, true);
+    }
+    /**
+     * This series of "resolveUpvalue()" calls works its way along the chain of nested compilers -
+     * until it hits one of the base cases — either it finds an actual local variable to capture or it runs out of compilers.
+    */
+    const auto upvalue = enclosing->resolveUpvalue(name);
+    if (upvalue.has_value()) {
+      return addUpvalue(upvalue.value(), false);
+    }
+    return std::nullopt;
+  }
   void namedVariable(const Token& name, bool canAssign) {
     OpCodeType setOp, getOp, varIndex;
-    const auto local = resolveLocal(name);
+    auto local = resolveLocal(name);
     if (local.has_value()) {
+      // Looking for a local variable declared in the current function's scope.
       varIndex = local.value(); 
       getOp = OpCode::OP_GET_LOCAL;
       setOp = OpCode::OP_SET_LOCAL;
+    } else if ((local = resolveUpvalue(name)).has_value()) {  // Returning the "upvalue index".
+      // Looking for a local variable declared in any of the surrounding functions.
+      varIndex = local.value(); 
+      getOp = OpCode::OP_GET_UPVALUE;
+      setOp = OpCode::OP_SET_UPVALUE;
     } else {
+      // Looking for a local variable declared in the top-level function.
       varIndex = identifierConstant(name);
       getOp = OpCode::OP_GET_GLOBAL;
       setOp = OpCode::OP_SET_GLOBAL;
@@ -387,7 +452,8 @@ struct Compiler {
   void endScope(void) {
     scopeDepth--;
     while (localCount > 0 && locals[localCount - 1].depth > scopeDepth) {
-      emitByte(OpCode::OP_POP);
+      // Closed locals will be hoisted onto the heap.
+      emitByte(locals[localCount - 1].isCaptured ? OpCode::OP_CLOSE_UPVALUE : OpCode::OP_POP);
       localCount--;
     }
   }
@@ -545,11 +611,18 @@ struct Compiler {
     return endCompiler();
   }
   void function(FunctionScope scope) {
-    // Every time compiling a function body, a new "FuncObj" will be created and retruned.
-    Compiler compiler { current, internedConstants, scope };
+    Compiler compiler { current, internedConstants, scope, this };
     const auto compiledFunc = compiler.functionCore();
-    current = compiler.current;
-    emitBytes(OpCode::OP_CONSTANT, makeConstant(compiledFunc));
+    current = compiler.current;  // Update compiling function.
+    if (compiledFunc->upvalueCount > 0) {
+      emitBytes(OpCode::OP_CLOSURE, makeConstant(compiledFunc));
+      for (uint32_t i = 0; i < compiledFunc->upvalueCount; i++) {
+        emitByte(compiler.upvalues[i].isLocal ? 1 : 0);  // local or upvalue.
+        emitByte(compiler.upvalues[i].index);  // local slot or upvalue index.
+      }
+    } else {
+      emitBytes(OpCode::OP_CONSTANT, makeConstant(compiledFunc));
+    }
   }
   void funDeclaration(void) {
     auto global = parseVariable("expect function name.");

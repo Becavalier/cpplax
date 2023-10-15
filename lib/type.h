@@ -120,6 +120,10 @@ enum OpCode : OpCodeType {
   OP_JUMP,
   OP_LOOP,
   OP_CALL,
+  OP_CLOSURE,
+  OP_GET_UPVALUE,
+  OP_SET_UPVALUE,
+  OP_CLOSE_UPVALUE,
 };
 
 enum class VMResult : uint8_t {
@@ -132,6 +136,8 @@ enum class ObjType : uint8_t {
   OBJ_FUNCTION,
   OBJ_STRING,
   OBJ_NATIVE,
+  OBJ_CLOSURE,
+  OBJ_UPVALUE,
 };
 
 enum class FunctionScope : uint8_t {
