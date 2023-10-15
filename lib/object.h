@@ -11,6 +11,7 @@
 #include <vector>
 #include <unordered_map>
 #include <iostream>
+#include <cstdio>
 #include "./chunk.h" 
 #include "./type.h"
 
@@ -18,12 +19,16 @@ struct Obj {
   ObjType type;
   Obj* next;  // Make up an intrusive list.
   explicit Obj(ObjType type, Obj* next = nullptr) : type(type), next(next) {}
-  virtual ~Obj() {};
+  virtual ~Obj() {
+#ifdef DEBUG_LOG_GC
+    printf("%p free type %hhu\n", this, type);
+#endif
+  };
 };
 
 struct StringObj : public Obj {
   std::string str;
-  StringObj(std::string_view str, Obj** next) : Obj(ObjType::OBJ_STRING, *next), str(str) {
+  StringObj(Obj** next, std::string_view str) : Obj(ObjType::OBJ_STRING, *next), str(str) {
     *next = this;
   }
   ~StringObj() {}
@@ -35,16 +40,25 @@ struct FuncObj : public Obj {
   uint32_t upvalueCount;
   Chunk chunk;
   StringObj* name;
-  FuncObj() : Obj(ObjType::OBJ_FUNCTION), arity(0), upvalueCount(0), name(nullptr) {}
+  explicit FuncObj(Obj** next) : Obj(ObjType::OBJ_FUNCTION, *next), arity(0), upvalueCount(0), name(nullptr) {
+    *next = this;
+  }
   ~FuncObj() {}
 };
-
 
 struct UpvalueObj : public Obj {
   typeRuntimeValue* location;  // Pointing to the value on the stack.
   typeRuntimeValue closed = std::monostate {};
-  UpvalueObj* next;
-  explicit UpvalueObj(typeRuntimeValue* location, UpvalueObj* next = nullptr) : Obj(ObjType::OBJ_UPVALUE), location(location), next(next) {}
+  UpvalueObj* nextValue;
+  UpvalueObj(
+    Obj** next, 
+    typeRuntimeValue* location, 
+    UpvalueObj* nextValue = nullptr) : 
+    Obj(ObjType::OBJ_UPVALUE, *next), 
+    location(location), 
+    nextValue(nextValue) {
+      *next = this;
+    }
   ~UpvalueObj() {}
 }; 
 
@@ -53,14 +67,14 @@ struct ClosureObj : public Obj {
   FuncObj* function;
   std::vector<UpvalueObj*> upvalues;  // Each closure has an array of upvalues.
   uint32_t upvalueCount;
-  explicit ClosureObj(FuncObj* functionObj) : 
-    Obj(ObjType::OBJ_CLOSURE), 
+  explicit ClosureObj(Obj** next, FuncObj* functionObj) : 
+    Obj(ObjType::OBJ_CLOSURE, *next), 
     function(functionObj), 
     upvalues(function->upvalueCount, nullptr), 
-    upvalueCount(function->upvalueCount) {}
-  ~ClosureObj() {
-    upvalues.clear();
-  }
+    upvalueCount(function->upvalueCount) {
+      *next = this;
+    }
+  ~ClosureObj() {}
 };
 
 struct NativeObj : public Obj {
@@ -68,7 +82,17 @@ struct NativeObj : public Obj {
   uint8_t arity;
   typeNativeFn function;
   StringObj* name;
-  NativeObj(typeNativeFn function, uint8_t arity, StringObj* name) : Obj(ObjType::OBJ_NATIVE), arity(arity), function(function), name(name) {}
+  NativeObj(
+    Obj** next,
+    typeNativeFn function,
+    uint8_t arity, 
+    StringObj* name) : 
+    Obj(ObjType::OBJ_NATIVE, *next),
+    arity(arity), 
+    function(function), 
+    name(name) {
+      *next = this;
+    }
   ~NativeObj() {}
 };
 

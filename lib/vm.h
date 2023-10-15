@@ -1,8 +1,6 @@
 #ifndef	_VM_H
 #define	_VM_H
 
-#define DEBUG_TRACE_EXECUTION
-
 #include <iostream>
 #include <cstdio>
 #include <array>
@@ -18,6 +16,8 @@
 #include "./constant.h"
 #include "./object.h"
 #include "./native.h"
+#include "./memory.h"
+#include "./compiler.h"
 
 /**
  * Representing a single ongoing function call, -
@@ -32,24 +32,30 @@ struct CallFrame {
 using typeVMFrames = std::array<CallFrame, FRAMES_MAX>;
 
 struct VM {
+  Memory mem;
   size_t frameCount;  // Store the number of ongoing function calls.
   typeVMStack stack;
   typeVMFrames frames;
   typeVMStack::iterator stackTop;  // Points to the element that just past the last used element.
-  Obj* objs;  // Points to the head of the heap object list.
-  InternedConstants* internedConstants;
+  InternedConstants internedConstants { mem };
   std::unordered_map<Obj*, typeRuntimeValue> globals;
   UpvalueObj* openUpvalues = nullptr;
   CallFrame* currentFrame;
-  VM(FuncObj* function, Obj* objs, InternedConstants* internedConstants) : frameCount(0), stackTop(stack.begin()), objs(objs), internedConstants(internedConstants) {
-    defineNative("print", printNative, 1);
-    defineNative("clock", clockNative, 0);
-    push(function);  // Save the top-level function onto the stack.
-    call(function, 0);  // Add a frame for the calling function.
+  explicit VM(std::vector<Token>& tokens) : mem(Memory {}), frameCount(0), stackTop(stack.begin()) {
+    Compiler compiler { tokens.cbegin(), mem, &internedConstants };
+    // Compiling into byte codes, it returns a new "FuncObj" containing the compiled top-level code. 
+    const auto function = compiler.compile(); 
+    if (!Error::hadError) {
+      tokens.clear();
+      defineNative("print", printNative, 1);
+      defineNative("clock", clockNative, 0);
+      push(function);  // Save the top-level function onto the stack.
+      call(function, 0);  // Add a frame for the calling function.
+    }
   }
   VM(const VM&) = delete;
   VM(const VM&&) = delete;
-  auto currentLine(void) {
+  size_t currentLine(void) {
     return retrieveFuncObj(currentFrame->frameEntity)->chunk.getLine(currentFrame->ip - 1);
   }
   auto top(void) const {
@@ -86,20 +92,16 @@ struct VM {
     if (std::holds_alternative<typeRuntimeNumericValue>(obj)) return isDoubleEqual(std::get<typeRuntimeNumericValue>(obj), 0);
     return false;
   }
-  void freeObjects(void) {
-    auto obj = objs;
-    while (obj != nullptr) {
-      auto next = obj->next;
-      delete obj;
-      obj = next;
-    }
-  }
-  void freeInternedConstants(void) {
-    delete internedConstants;
-  }
+  // void freeObjects(void) {
+  //   auto obj = objs;
+  //   while (obj != nullptr) {
+  //     auto next = obj->next;
+  //     delete obj;
+  //     obj = next;
+  //   }
+  // }
   void freeVM(void) {
-    freeObjects();
-    freeInternedConstants();
+    // freeObjects();
   }
   auto readByte(void) {
     return *currentFrame->ip++;
@@ -164,9 +166,9 @@ struct VM {
      * The "push" and "pop" instructions here are for GC. 
      * Storing them on the value stack makes sure the objects won't be collected during initialization.
     */
-    push(internedConstants->add(name, &objs));
+    push(internedConstants.add(name));
     const auto obj = std::get<Obj*>(stack[DEFAULT_IDX]);
-    push(new NativeObj { function, arity, castStringObj(obj), });
+    push(mem.makeObj<NativeObj>(function, arity, castStringObj(obj)));
     globals[obj] = stack[DEFAULT_IDX + 1];
     pop();
     pop();
@@ -176,16 +178,16 @@ struct VM {
     auto upvalue = openUpvalues;
     while (upvalue != nullptr && upvalue->location > local) {  // Searching from stack top to bottom.
       prevUpvalue = upvalue;
-      upvalue = upvalue->next;
+      upvalue = upvalue->nextValue;
     }
     if (upvalue != nullptr && upvalue->location == local) {
       return upvalue;
     }
-    const auto createdUpvalue = new UpvalueObj { local, upvalue };
+    const auto createdUpvalue = mem.makeObj<UpvalueObj>(local, upvalue);
     if (prevUpvalue == nullptr) {
       openUpvalues = createdUpvalue;  // Empty list.
     } else {
-      prevUpvalue->next = createdUpvalue;  // Insert into the list at a right position.
+      prevUpvalue->nextValue = createdUpvalue;  // Insert into the list at a right position.
     }
     return createdUpvalue;
   }
@@ -194,7 +196,7 @@ struct VM {
       auto upvalue = openUpvalues;
       upvalue->closed = *upvalue->location;  // Save closed upvalue onto the heap "UpvalueObj" object.
       upvalue->location = &upvalue->closed;
-      openUpvalues = upvalue->next;
+      openUpvalues = upvalue->nextValue;
     }
   }
   VMResult run(void) {
@@ -226,7 +228,7 @@ struct VM {
             const auto heapX = std::get<Obj*>(x);
             const auto heapY = std::get<Obj*>(y);
             if (heapX->type == ObjType::OBJ_STRING && heapY->type == ObjType::OBJ_STRING) {
-              push(internedConstants->add(castStringObj(heapX)->str + castStringObj(heapY)->str, &objs));
+              push(internedConstants.add(castStringObj(heapX)->str + castStringObj(heapY)->str));
               break;
             }
           } else {
@@ -354,7 +356,7 @@ struct VM {
           break;
         }
         case OpCode::OP_CLOSURE: {
-          auto closure = new ClosureObj { retrieveFuncObj(std::get<Obj*>(readConstant())) };
+          auto closure = mem.makeObj<ClosureObj>(retrieveFuncObj(std::get<Obj*>(readConstant())));
           push(closure);
           for (uint32_t i = 0; i < closure->upvalueCount; i++) {
             uint8_t isLocal = readByte();

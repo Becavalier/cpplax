@@ -17,7 +17,6 @@
 #include "../lib/resolver.h"
 #include "../lib/chunk.h"
 #include "../lib/vm.h"
-#include "../lib/compiler.h"
 
 #define PATH_ARG_IDX 0
 
@@ -48,13 +47,7 @@ struct Lax {
       interpreter.interpret(ast);  // Interpret.
     } else {
       std::cout << "- Compiler Mode -\n\n";
-      Compiler compiler { tokens.cbegin() };
-      // Compile into byte codes, returns a new "FuncObj" containing the compiled top-level code. 
-      const auto funcObj = compiler.compile(); 
-      if (Error::hadError) return;
-
-      tokens.clear();
-      VM vm { funcObj, compiler.objs, compiler.internedConstants };
+      VM vm { tokens };
       vm.interpret();
     }
   }

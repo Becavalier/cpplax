@@ -1,8 +1,6 @@
 #ifndef	_COMPILER_H
 #define	_COMPILER_H
 
-#define DEBUG_PRINT_CODE
-
 #include <string>
 #include <cstdlib>
 #include <array>
@@ -15,6 +13,7 @@
 #include "./error.h"
 #include "./constant.h"
 #include "./object.h"
+#include "./memory.h"
 
 struct Compiler;
 using typeParseFn = void (Compiler::*)(bool);
@@ -54,9 +53,9 @@ struct Upvalue {
 
 struct Compiler {
   bool panicMode = false;
+  Memory& mem;
   FuncObj* compilingFunc = nullptr;
   FunctionScope compilingScope = FunctionScope::TYPE_TOP_LEVEL;
-  Obj* objs = nullptr;  // Points to the head of the heap object list.
   InternedConstants* internedConstants;
   Upvalue upvalues[UINT8_COUNT] = {};
   Local locals[UINT8_COUNT] = {};  // All the in-scope locals.
@@ -110,14 +109,20 @@ struct Compiler {
     [TokenType::WHILE] = { nullptr, nullptr, Precedence::PREC_NONE },
     [TokenType::SOURCE_EOF] = { nullptr, nullptr, Precedence::PREC_NONE },
   }; 
-  Compiler(std::vector<Token>::const_iterator tokenIt, InternedConstants* constantPool = nullptr, FunctionScope scope = FunctionScope::TYPE_TOP_LEVEL, Compiler* enclosingCompiler = nullptr) : 
-    compilingFunc(new FuncObj {}),
+  Compiler(
+    std::vector<Token>::const_iterator tokenIt, 
+    Memory& memRef, 
+    InternedConstants* constants = nullptr, 
+    FunctionScope scope = FunctionScope::TYPE_TOP_LEVEL, 
+    Compiler* enclosingCompiler = nullptr) : 
+    mem(memRef),
+    compilingFunc(memRef.makeObj<FuncObj>()),
     compilingScope(scope),
-    internedConstants(constantPool == nullptr ? new InternedConstants {} : constantPool), 
+    internedConstants(constants), 
     current(tokenIt),
     enclosing(enclosingCompiler) {
       if (scope != FunctionScope::TYPE_TOP_LEVEL) {
-        compilingFunc->name = castStringObj(internedConstants->add(previous().lexeme, &objs));
+        compilingFunc->name = castStringObj(internedConstants->add(previous().lexeme));
       }
       Local* local = &locals[localCount++];  // Stack slot zero is for VM’s own internal use.
       local->depth = 0;
@@ -224,7 +229,7 @@ struct Compiler {
   }
   auto identifierConstant(const Token& token) {
     // Take the given token and add its lexeme to the chunk’s constant table as a string.
-    return makeConstant(internedConstants->add(token.lexeme, &objs));
+    return makeConstant(internedConstants->add(token.lexeme));
   }
   void addLocal(const Token* name) {
     if (localCount == UINT8_COUNT) {
@@ -361,7 +366,7 @@ struct Compiler {
   }
   void string(bool) {
     const auto str = std::get<std::string_view>(previous().literal);
-    emitConstant(internedConstants->add(str, &objs));
+    emitConstant(internedConstants->add(str));
   }
   void number(bool) {
     emitConstant(previous().literal);  // Number constant has been consumed.
@@ -611,7 +616,7 @@ struct Compiler {
     return endCompiler();
   }
   void function(FunctionScope scope) {
-    Compiler compiler { current, internedConstants, scope, this };
+    Compiler compiler { current, mem, internedConstants, scope, this };
     const auto compiledFunc = compiler.functionCore();
     current = compiler.current;  // Update compiling function.
     if (compiledFunc->upvalueCount > 0) {

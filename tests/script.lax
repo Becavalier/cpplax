@@ -1,14 +1,19 @@
-fn outer() {
-  var x = "outsid123e";
-  {
-    var a =123;
-    fn inner() {
-      a = 200;
+var globalOne;
+var globalTwo;
+
+fn main() {
+  for (var a = 1; a <= 2; a = a + 1) {
+    fn closure() {
       print(a);
     }
-    return inner;
+    if (globalOne == nil) {
+      globalOne = closure;
+    } else {
+      globalTwo = closure;
+    }
   }
 }
 
-var closure = outer();
-closure();
+main();
+globalOne();
+globalTwo();
