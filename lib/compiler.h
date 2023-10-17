@@ -53,7 +53,7 @@ struct Upvalue {
 
 struct Compiler {
   bool panicMode = false;
-  Memory& mem;
+  Memory* mem;
   FuncObj* compilingFunc = nullptr;
   FunctionScope compilingScope = FunctionScope::TYPE_TOP_LEVEL;
   InternedConstants* internedConstants;
@@ -108,15 +108,15 @@ struct Compiler {
     [TokenType::VAR] = { nullptr, nullptr, Precedence::PREC_NONE },
     [TokenType::WHILE] = { nullptr, nullptr, Precedence::PREC_NONE },
     [TokenType::SOURCE_EOF] = { nullptr, nullptr, Precedence::PREC_NONE },
-  }; 
+  };
   Compiler(
     std::vector<Token>::const_iterator tokenIt, 
-    Memory& memRef, 
+    Memory* memPtr,
     InternedConstants* constants = nullptr, 
     FunctionScope scope = FunctionScope::TYPE_TOP_LEVEL, 
     Compiler* enclosingCompiler = nullptr) : 
-    mem(memRef),
-    compilingFunc(memRef.makeObj<FuncObj>()),
+    mem(memPtr),
+    compilingFunc(memPtr->makeObj<FuncObj>()),
     compilingScope(scope),
     internedConstants(constants), 
     current(tokenIt),
@@ -174,10 +174,10 @@ struct Compiler {
     emitByte(OpCode::OP_NIL);
     emitByte(OpCode::OP_RETURN);
   }
-  void emitConstant(typeRuntimeValue value) {
+  void emitConstant(const typeRuntimeValue& value) {
     emitBytes(OpCode::OP_CONSTANT, makeConstant(value));
   }
-  OpCodeType makeConstant(typeRuntimeValue value) {
+  OpCodeType makeConstant(const typeRuntimeValue& value) {
     auto constantIdx = currentChunk().addConstant(value);
     if (constantIdx > UINT8_MAX) {
       errorAtPrevious("too many constants in one chunk.");
@@ -673,6 +673,7 @@ struct Compiler {
     return Error::hadError ? nullptr : compilingFunc;
   }
   auto compile(void) {
+    mem->setCompiler(this);
     while (!match(TokenType::SOURCE_EOF)) {
       declaration();
     }

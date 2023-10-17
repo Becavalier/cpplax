@@ -30,9 +30,6 @@ template<typename T>
 std::string stringifyVariantValue(const T& literal) {
   static_assert(isVariantV<T>);
   if (literal.valueless_by_exception()) return "nil";
-  const auto printFunction = [](FuncObj* func) -> auto {
-    return "<fn " + (func->name == nullptr ? "script" : func->name->str) + ">";
-  };
   return std::visit([&](auto&& arg) {
     using K = std::decay_t<decltype(arg)>;
     if constexpr (std::is_same_v<K, double>) {
@@ -50,24 +47,7 @@ std::string stringifyVariantValue(const T& literal) {
     } else if constexpr (std::is_same_v<K, std::string>) {
       return arg;
     } else if constexpr (std::is_same_v<K, Obj*>) {
-      switch (arg->type) {
-        case ObjType::OBJ_STRING: {
-          return static_cast<StringObj*>(arg)->str;
-        }
-        case ObjType::OBJ_FUNCTION: {
-          return printFunction(retrieveFuncObj(arg));
-        }
-        case ObjType::OBJ_NATIVE: {
-          return std::string { "<fn native>" };
-        }
-        case ObjType::OBJ_CLOSURE: {
-          return printFunction(castClosureObj(arg)->function);
-        }
-        case ObjType::OBJ_UPVALUE: {
-          return std::string { "upvalue" };
-        }
-        default: return std::string { "<rt-value>" };
-      }
+      return Obj::printObjNameByEnum(arg);
     } else {
       return std::string { "<rt-value>" };
     }

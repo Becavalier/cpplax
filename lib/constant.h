@@ -11,18 +11,17 @@
 #include "./memory.h"
 
 struct Obj;
-class InternedConstants  {
-  Memory& mem;
-  std::unordered_map<std::string_view, Obj*> internedConstants;
- public:
-  explicit InternedConstants(Memory& memRef) : mem(memRef) {};
+struct InternedConstants  {
+  Memory* mem;
+  std::unordered_map<std::string_view, Obj*> table;
+  explicit InternedConstants(Memory* memPtr) : mem(memPtr) {};
   Obj* add(std::string_view str) {
-    const auto target = internedConstants.find(str);
-    if (target != internedConstants.end()) {
+    const auto target = table.find(str);
+    if (target != table.end()) {
       return target->second;  // Reuse the existing interned string obj.
     } else {
-      const auto heapStr = new StringObj { &mem.objs, str };
-      internedConstants[heapStr->str] = heapStr;
+      const auto heapStr = mem->makeObj<StringObj>(str);
+      table[str] = heapStr;
       return heapStr;  // Generate a new sting obj on the heap.
     }
   };

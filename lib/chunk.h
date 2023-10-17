@@ -56,9 +56,9 @@ struct Chunk {
     }
     return 0;
   }
-  size_t addConstant(typeRuntimeValue v) {
+  size_t addConstant(const typeRuntimeValue& v) {
     try {
-      constants.push_back(v);
+      constants.emplace_back(v);
     } catch (const std::bad_alloc& e) {
       std::exit(EXIT_FAILURE);
     }

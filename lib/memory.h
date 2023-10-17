@@ -3,47 +3,60 @@
 
 #include <iostream>
 #include <cstdlib>
+#include <cstdio>
+#include <type_traits>
+#include <unordered_map>
 #include "./macro.h"
 #include "./object.h"
 #include "./type.h"
+#include "./helper.h"
 
-// #define ALLOCATE(type, count) \
-//     (type*)reallocate(NULL, 0, sizeof(type) * (count))
-
-// void* reallocate(void* pointer, size_t oldSize, size_t newSize) {
-//   if (newSize == 0) {
-//     free(pointer);
-//     return NULL;
-//   }
-
-//   void* result = realloc(pointer, newSize);
-//   return result;
-// }
-
-
+struct VM;
+struct Compiler;
 struct Memory {
   Obj* objs = nullptr;  // Points to the head of the heap object list.
-  template<typename T, typename ...Args>
+  VM* vm = nullptr;
+  Compiler* compiler = nullptr;
+  size_t bytesAllocated = 0;
+  size_t nextGC = 1024 * 1024;
+  Memory() = default;
+  void setVM(VM* vmPtr) { vm = vmPtr; }
+  void setCompiler(Compiler* compilerPtr) { compiler = compilerPtr; }
+  inline void freeObj(Obj* obj) {
+#ifdef DEBUG_LOG_GC
+    printf("[%p] Free type %s\n", obj, Obj::printObjNameByEnum(obj).c_str());
+#endif
+    bytesAllocated -= sizeof(*obj);
+    delete obj;
+  }
+  template<typename T, typename ...Args> 
   inline T* makeObj(Args && ...args) {
-    return new T { &objs, std::forward<Args>(args)... };
-  }
-  static void collectGarbage(void) {
-#ifdef DEBUG_LOG_GC
-    std::cout << "-- GC BEGIN --" << std::endl;
+#ifdef DEBUG_STRESS_GC
+    collectGarbage();
+#else
+    if ((bytesAllocated += sizeof(T)) > nextGC) {
+      collectGarbage();
+    }
 #endif
-
-
+    const auto& obj = new T { &objs, std::forward<Args>(args)... };
 #ifdef DEBUG_LOG_GC
-    std::cout << "-- GC END --" << std::endl;
+    printf("\n-- [%p] Allocate %zu bytes for '", obj, sizeof(T));      
+    std::cout << Obj::printObjNameByType<T>() << "' --\n" << std::endl;
 #endif
+    return obj;
   }
+  void markRoots(void);
+  void collectGarbage(void);
+  void free(bool = true);
+  void markObject(Obj*);
+  void markValue(typeRuntimeValue&);
+  void markTable(typeVMGlobals&);
+  void markCompilerRoots(Compiler*);
+  void markArray(typeRuntimeValueArray&);
+  void traceReferences(void);
+  void blackenObject(Obj*);
+  void sweep(void);
+  void tableRemoveWhite(void);
 };
-
-void* operator new(size_t size) {
-  #ifdef DEBUG_STRESS_GC
-    Memory::collectGarbage();  // Collecting right before allocation.
-  #endif
-  return malloc(size);
-}
 
 #endif

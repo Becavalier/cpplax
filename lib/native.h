@@ -6,7 +6,6 @@
 #include <ctime>
 #include "./type.h"
 #include "./helper.h"
-#include "./object.h"
 
 typeRuntimeValue printNative(uint8_t argCount, typeVMStack::const_iterator args) {
   for (auto i = 0; i < argCount; i++) {

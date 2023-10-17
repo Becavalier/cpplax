@@ -161,5 +161,6 @@ using typeRuntimeValue =
   >;
 using typeRuntimeValueArray = std::vector<typeRuntimeValue>;
 using typeVMStack = std::array<typeRuntimeValue, STACK_MAX>;
+using typeVMGlobals = std::unordered_map<Obj*, typeRuntimeValue>;
 
 #endif

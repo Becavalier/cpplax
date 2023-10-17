@@ -16,6 +16,7 @@
 #include "../lib/interpreter.h"
 #include "../lib/resolver.h"
 #include "../lib/chunk.h"
+#include "../lib/memory.h"
 #include "../lib/vm.h"
 
 #define PATH_ARG_IDX 0
@@ -47,7 +48,8 @@ struct Lax {
       interpreter.interpret(ast);  // Interpret.
     } else {
       std::cout << "- Compiler Mode -\n\n";
-      VM vm { tokens };
+      Memory memory {};
+      VM vm { tokens, &memory };
       vm.interpret();
     }
   }

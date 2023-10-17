@@ -18,12 +18,11 @@
 struct Obj {
   ObjType type;
   Obj* next;  // Make up an intrusive list.
+  bool isMarked = false;
+  template<typename T> static const char* printObjNameByType(void);
+  static std::string printObjNameByEnum(Obj*);
   explicit Obj(ObjType type, Obj* next = nullptr) : type(type), next(next) {}
-  virtual ~Obj() {
-#ifdef DEBUG_LOG_GC
-    printf("%p free type %hhu\n", this, type);
-#endif
-  };
+  virtual ~Obj() {};
 };
 
 struct StringObj : public Obj {
@@ -96,7 +95,6 @@ struct NativeObj : public Obj {
   ~NativeObj() {}
 };
 
-
 // Helper functions.
 inline auto castStringObj(Obj* obj) {
   return static_cast<StringObj*>(obj);
@@ -107,13 +105,26 @@ inline auto castClosureObj(Obj* obj) {
 }
 
 inline auto retrieveFuncObj(Obj* obj) { 
-  return obj->type == ObjType::OBJ_FUNCTION 
-    ? static_cast<FuncObj*>(obj) 
-    : castClosureObj(obj)->function;   // Falling through to "ClosureObj".
+  return obj->type == ObjType::OBJ_FUNCTION ? static_cast<FuncObj*>(obj) : castClosureObj(obj)->function;  // Falling through to "ClosureObj".
 }
 
 inline auto castNativeObj(Obj* obj) {
   return static_cast<NativeObj*>(obj);
+}
+
+inline auto castUpvalueObj(Obj* obj) {
+  return static_cast<UpvalueObj*>(obj);
+}
+
+template<typename T>
+const char* Obj::printObjNameByType(void) {
+  using K = std::remove_cv_t<T>;
+  if constexpr (std::is_same_v<K, FuncObj>) return "FuncObj";
+  else if constexpr (std::is_same_v<K, NativeObj>) return "NativeObj";
+  else if constexpr (std::is_same_v<K, ClosureObj>) return "ClosureObj";
+  else if constexpr (std::is_same_v<K, StringObj>) return "StringObj";
+  else if constexpr (std::is_same_v<K, UpvalueObj>) return "UpvalueObj";
+  return "Unknown Type";
 }
 
 #endif
