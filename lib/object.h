@@ -21,6 +21,10 @@ struct Obj {
   bool isMarked = false;
   template<typename T> static const char* printObjNameByType(void);
   static std::string printObjNameByEnum(Obj*);
+  template<typename T>
+  T* cast(void) {
+    return static_cast<T*>(this);
+  }
   explicit Obj(ObjType type, Obj* next = nullptr) : type(type), next(next) {}
   virtual ~Obj() {};
 };
@@ -95,26 +99,28 @@ struct NativeObj : public Obj {
   ~NativeObj() {}
 };
 
+struct ClassObj : public Obj {
+  StringObj* name;
+  ClassObj(Obj** next, StringObj* name) : Obj(ObjType::OBJ_CLASS, *next), name(name) {
+    *next = this;
+  }
+  ~ClassObj() {}
+};
+
+struct InstanceObj : public Obj {
+  ClassObj* klass;
+  typeVMStore fields = {};
+  InstanceObj(Obj** next, ClassObj* klass) : Obj(ObjType::OBJ_INSTANCE, *next), klass(klass) {
+    *next = this;
+  }
+  ~InstanceObj() {}
+};
+
 // Helper functions.
-inline auto castStringObj(Obj* obj) {
-  return static_cast<StringObj*>(obj);
-}
-
-inline auto castClosureObj(Obj* obj) {
-  return static_cast<ClosureObj*>(obj);
-}
-
 inline auto retrieveFuncObj(Obj* obj) { 
-  return obj->type == ObjType::OBJ_FUNCTION ? static_cast<FuncObj*>(obj) : castClosureObj(obj)->function;  // Falling through to "ClosureObj".
+  return obj->type == ObjType::OBJ_FUNCTION ? static_cast<FuncObj*>(obj) : obj->cast<ClosureObj>()->function;  // Falling through to "ClosureObj".
 }
 
-inline auto castNativeObj(Obj* obj) {
-  return static_cast<NativeObj*>(obj);
-}
-
-inline auto castUpvalueObj(Obj* obj) {
-  return static_cast<UpvalueObj*>(obj);
-}
 
 template<typename T>
 const char* Obj::printObjNameByType(void) {

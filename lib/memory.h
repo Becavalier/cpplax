@@ -32,10 +32,10 @@ struct Memory {
   template<typename T, typename ...Args> 
   inline T* makeObj(Args && ...args) {
 #ifdef DEBUG_STRESS_GC
-    collectGarbage();
+    gc();
 #else
     if ((bytesAllocated += sizeof(T)) > nextGC) {
-      collectGarbage();
+      gc();
     }
 #endif
     const auto& obj = new T { &objs, std::forward<Args>(args)... };
@@ -46,11 +46,11 @@ struct Memory {
     return obj;
   }
   void markRoots(void);
-  void collectGarbage(void);
+  void gc(void);
   void free(bool = true);
   void markObject(Obj*);
   void markValue(typeRuntimeValue&);
-  void markTable(typeVMGlobals&);
+  void markTable(typeVMStore&);
   void markCompilerRoots(Compiler*);
   void markArray(typeRuntimeValueArray&);
   void traceReferences(void);

@@ -16,16 +16,9 @@ void VM::freeVM(void) {
 } 
 
 void VM::defineNative(const char* name, NativeObj::typeNativeFn function, uint8_t arity) {
-  /**
-   * The "push" and "pop" instructions here are for GC. 
-   * Storing them on the value stack makes sure the objects won't be collected during initialization.
-  */
-  push(internedConstants.add(name));
-  const auto obj = std::get<Obj*>(stack[DEFAULT_IDX]);
-  push(mem->makeObj<NativeObj>(function, arity, castStringObj(obj)));
-  globals[obj] = stack[DEFAULT_IDX + 1];
-  pop();
-  pop();
+  const auto nativeName = internedConstants.add(name);
+  globals[nativeName] = nullptr;  // For comforting GC.
+  globals[nativeName] = mem->makeObj<NativeObj>(function, arity, nativeName->cast<StringObj>());
 }
 
 UpvalueObj* VM::captureUpvalue(typeRuntimeValue* local) {
@@ -75,13 +68,18 @@ void VM::callValue(typeRuntimeValue callee, uint8_t argCount) {
     const auto calleeObj = std::get<Obj*>(callee);
     switch (calleeObj->type) {
       case ObjType::OBJ_NATIVE: {
-        const auto nativeFunc = castNativeObj(calleeObj);
+        const auto nativeFunc = calleeObj->cast<NativeObj>();;
         if (nativeFunc->arity != argCount) {
           throwRuntimeError("incorrect number of arguments passed to native function '" + nativeFunc->name->str + "'." );
         }
         const auto result = nativeFunc->function(argCount, stackTop - argCount);
         stackTop -= argCount + 1;
         push(result);
+        return;
+      }
+      case ObjType::OBJ_CLASS: {
+        const auto klass = calleeObj->cast<ClassObj>();
+        *(stackTop - argCount - 1) = mem->makeObj<InstanceObj>(klass);  // Replace the class object being called to its instance.
         return;
       }
       default: {
@@ -122,7 +120,7 @@ VMResult VM::run(void) {
           const auto heapX = std::get<Obj*>(x);
           const auto heapY = std::get<Obj*>(y);
           if (heapX->type == ObjType::OBJ_STRING && heapY->type == ObjType::OBJ_STRING) {
-            push(internedConstants.add(castStringObj(heapX)->str + castStringObj(heapY)->str));
+            push(internedConstants.add(heapX->cast<StringObj>()->str + heapY->cast<StringObj>()->str));
             break;
           }
         } else {
@@ -194,13 +192,18 @@ VMResult VM::run(void) {
       }
       case OpCode::OP_GET_GLOBAL: {
         const auto name = readConstantOfExpectedType(ObjType::OBJ_STRING);
-        const auto value = getDefinedVariable(name, "undefined variable '" + castStringObj(name)->str + "'.");
+        const auto value = globals.find(name);
+        if (value == globals.end()) {
+          throwRuntimeError("undefined variable '" + name->cast<StringObj>()->str + "'.");
+        }
         push(value->second);
         break;
       }
       case OpCode::OP_SET_GLOBAL: {
         const auto name = readConstantOfExpectedType(ObjType::OBJ_STRING);
-        testDefinedVariable(name, "undefined variable '" + castStringObj(name)->str + "'.");
+         if (!globals.contains(name)) {
+          throwRuntimeError("undefined variable '" + name->cast<StringObj>()->str + "'.");
+         }
         globals[name] = peek(0);  // Assignment expression doesn’t pop the value off the stack.
         break;
       }
@@ -241,12 +244,12 @@ VMResult VM::run(void) {
       }
       case OpCode::OP_GET_UPVALUE: {
         const auto slot = readByte();
-        push(*castClosureObj(currentFrame->frameEntity)->upvalues[slot]->location);
+        push(*currentFrame->frameEntity->cast<ClosureObj>()->upvalues[slot]->location);
         break;
       }
       case OpCode::OP_SET_UPVALUE: {
         const auto slot = readByte();
-        *castClosureObj(currentFrame->frameEntity)->upvalues[slot]->location = peek(0);
+        *currentFrame->frameEntity->cast<ClosureObj>()->upvalues[slot]->location = peek(0);
         break;
       }
       case OpCode::OP_CLOSURE: {
@@ -258,7 +261,7 @@ VMResult VM::run(void) {
           if (isLocal == 1) {
             closure->upvalues[i] = captureUpvalue(&*(currentFrame->slots + index));
           } else {
-            closure->upvalues[i] = castClosureObj(currentFrame->frameEntity)->upvalues[index];
+            closure->upvalues[i] = currentFrame->frameEntity->cast<ClosureObj>()->upvalues[index];
           }
         }
         break;
@@ -268,8 +271,42 @@ VMResult VM::run(void) {
         pop();  // Then, discard it from the stack.
         break;
       }
+      case OpCode::OP_CLASS: {
+        const auto name = readConstantOfExpectedType(ObjType::OBJ_STRING);
+        push(mem->makeObj<ClassObj>(name->cast<StringObj>()));
+        break;
+      }
+      case OpCode::OP_GET_PROPERTY: {
+        Obj* obj = nullptr;
+        if (!std::holds_alternative<Obj*>(peek()) || (obj = std::get<Obj*>(peek()))->type != ObjType::OBJ_INSTANCE) {
+          throwRuntimeError("only instances have properties.");
+        }
+        auto instance = obj->cast<InstanceObj>();
+        const auto name = readConstantOfExpectedType(ObjType::OBJ_STRING);
+        const auto valIt = instance->fields.find(name);
+        if (valIt != instance->fields.end()) {
+          pop();
+          push(valIt->second);
+          break;
+        }
+        throwRuntimeError("undefined property '" + name->cast<StringObj>()->str + "'.");
+      }
+      case OpCode::OP_SET_PROPERTY: {
+        Obj* obj = nullptr;
+        if (!std::holds_alternative<Obj*>(peek(1)) || (obj = std::get<Obj*>(peek(1)))->type != ObjType::OBJ_INSTANCE) {
+          throwRuntimeError("only instances have properties.");
+        }
+        auto instance = obj->cast<InstanceObj>();
+        const auto name = readConstantOfExpectedType(ObjType::OBJ_STRING);
+        instance->fields[name] = peek(0);
+        const auto value = pop();
+        pop();
+        push(value);  // Leave the assigned value on the stack.
+        break;
+      }
     }
   }
+  #undef NUM_BINARY_OP
 }
 
 void VM::stackTrace(void) {
@@ -287,6 +324,7 @@ void VM::stackTrace(void) {
 }
 
 VMResult VM::interpret(void) {
+  if (!isStatusOk) return VMResult::INTERPRET_RUNTIME_ERROR;
   try {
     const auto result = run();
     freeVM();

@@ -36,17 +36,20 @@ struct VM {
   typeVMFrames frames;
   typeVMStack::iterator stackTop;  // Points to the element that just past the last used element.
   InternedConstants internedConstants { mem };
-  typeVMGlobals globals;
+  typeVMStore globals;
   UpvalueObj* openUpvalues = nullptr;
   CallFrame* currentFrame;
   // For GC.
   std::vector<Obj*> grayStack = {};
+  bool isStatusOk = true;
   explicit VM(std::vector<Token>& tokens, Memory* mem) : mem(mem), frameCount(0), stackTop(stack.begin()) {
     // Compiling into byte codes, it returns a new "FuncObj" containing the compiled top-level code. 
     const auto function = Compiler { tokens.cbegin(), mem, &internedConstants }.compile();
     if (!Error::hadError) {
       tokens.clear();
       initVM(function);
+    } else {
+      isStatusOk = false;
     }
   }
   VM(const VM&) = delete;
@@ -58,14 +61,14 @@ struct VM {
   auto top(void) const {
     return stackTop - 1;
   }
-  void push(typeRuntimeValue v) {
+  void push(const typeRuntimeValue& v) {
     *stackTop = v;
     ++stackTop;
   }
-  auto peek(size_t distance) const {
+  auto& peek(size_t distance = 0) const {
     return *(stackTop - 1 - distance);
   }
-  typeRuntimeValue& pop(void) {
+  auto& pop(void) {
     --stackTop;
     return *stackTop;
   }
@@ -96,21 +99,13 @@ struct VM {
     currentFrame->ip += 2;
     return static_cast<uint16_t>(*(currentFrame->ip - 2) << 8 | *(currentFrame->ip - 1));
   }
-  auto readConstant(void) {
+  auto& readConstant(void) {
     return retrieveFuncObj(currentFrame->frameEntity)->chunk.constants[readByte()];
   }
   auto readConstantOfExpectedType(ObjType type) {
     const auto name = std::get<Obj*>(readConstant());
     assert(name->type == type);  // Runtime assertion.
     return name;
-  }
-  void testDefinedVariable(Obj* name, const std::string& errorMsg) {
-    if (!globals.contains(name)) throwRuntimeError(errorMsg);
-  }
-  auto getDefinedVariable(Obj* name, const std::string& errorMsg) {
-    const auto value = globals.find(name);
-    if (value == globals.end()) throwRuntimeError(errorMsg);
-    return value;
   }
   void call(Obj*, uint8_t);
   void callValue(typeRuntimeValue, uint8_t);

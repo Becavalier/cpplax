@@ -39,11 +39,11 @@ void Memory::markValue(typeRuntimeValue& value) {
   }
 }
 
-void Memory::markTable(typeVMGlobals& map) {
+void Memory::markTable(typeVMStore& map) {
   for (auto& [key, value] : map) {
     markObject(key);
     markValue(value);
-  }  
+  }
 }
 
 void Memory::markArray(typeRuntimeValueArray& array) {
@@ -86,8 +86,8 @@ void Memory::blackenObject(Obj* obj) {
     case ObjType::OBJ_NATIVE:
     case ObjType::OBJ_STRING:
       break;
-    case ObjType::OBJ_UPVALUE: {
-      markValue(castUpvalueObj(obj)->closed);
+    case ObjType::OBJ_UPVALUE: {  
+      markValue(obj->cast<UpvalueObj>()->closed);
       break;
     }
     case ObjType::OBJ_FUNCTION: {
@@ -97,11 +97,22 @@ void Memory::blackenObject(Obj* obj) {
       break;
     }
     case ObjType::OBJ_CLOSURE: {
-      auto closure = castClosureObj(obj);
+      auto closure = obj->cast<ClosureObj>();
       markObject(closure->function);
       for (const auto& uvObj : closure->upvalues) {
         markObject(uvObj);
       }
+      break;
+    }
+    case ObjType::OBJ_CLASS: {
+      auto klass = obj->cast<ClassObj>();
+      markObject(klass->name);
+      break;
+    }
+    case ObjType::OBJ_INSTANCE: {
+      auto instance = obj->cast<InstanceObj>();
+      markObject(instance->klass);
+      markTable(instance->fields);
       break;
     }
   }
@@ -149,7 +160,7 @@ void Memory::tableRemoveWhite(void) {
   }
 }
 
-void Memory::collectGarbage(void) {
+void Memory::gc(void) {
   if (vm == nullptr || compiler == nullptr) return;
 #ifdef DEBUG_LOG_GC
   std::cout << "\n-- GC BEGIN --" << std::endl;

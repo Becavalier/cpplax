@@ -124,6 +124,9 @@ enum OpCode : OpCodeType {
   OP_GET_UPVALUE,
   OP_SET_UPVALUE,
   OP_CLOSE_UPVALUE,
+  OP_CLASS,
+  OP_SET_PROPERTY,
+  OP_GET_PROPERTY,
 };
 
 enum class VMResult : uint8_t {
@@ -138,6 +141,8 @@ enum class ObjType : uint8_t {
   OBJ_NATIVE,
   OBJ_CLOSURE,
   OBJ_UPVALUE,
+  OBJ_CLASS,
+  OBJ_INSTANCE,
 };
 
 enum class FunctionScope : uint8_t {
@@ -161,6 +166,6 @@ using typeRuntimeValue =
   >;
 using typeRuntimeValueArray = std::vector<typeRuntimeValue>;
 using typeVMStack = std::array<typeRuntimeValue, STACK_MAX>;
-using typeVMGlobals = std::unordered_map<Obj*, typeRuntimeValue>;
+using typeVMStore = std::unordered_map<Obj*, typeRuntimeValue>;
 
 #endif

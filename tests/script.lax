@@ -1,19 +1,7 @@
-var globalOne;
-var globalTwo;
+class Pair {}
 
-fn main() {
-  for (var a = 1; a <= 2; a = a + 1) {
-    fn closure() {
-      print(a);
-    }
-    if (globalOne == nil) {
-      globalOne = closure;
-    } else {
-      globalTwo = closure;
-    }
-  }
-}
-
-main();
-globalOne();
-globalTwo();
+var a = "a";
+var pair = Pair();
+pair.first = 1;
+pair.second = 2;
+print(pair.first + pair.second); // 3.

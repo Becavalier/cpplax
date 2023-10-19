@@ -75,7 +75,7 @@ struct Compiler {
     [TokenType::LEFT_BRACE] = { nullptr, nullptr, Precedence::PREC_NONE }, 
     [TokenType::RIGHT_BRACE] = {nullptr, nullptr, Precedence::PREC_NONE },
     [TokenType::COMMA] = { nullptr, nullptr, Precedence::PREC_NONE },
-    [TokenType::DOT] = { nullptr, nullptr, Precedence::PREC_NONE },
+    [TokenType::DOT] = { nullptr, &Compiler::dot, Precedence::PREC_CALL },
     [TokenType::MINUS] = { &Compiler::unary, &Compiler::binary, Precedence::PREC_TERM },
     [TokenType::PLUS] = { nullptr, &Compiler::binary, Precedence::PREC_TERM },
     [TokenType::SEMICOLON] = { nullptr, nullptr, Precedence::PREC_NONE },
@@ -122,7 +122,7 @@ struct Compiler {
     current(tokenIt),
     enclosing(enclosingCompiler) {
       if (scope != FunctionScope::TYPE_TOP_LEVEL) {
-        compilingFunc->name = castStringObj(internedConstants->add(previous().lexeme));
+        compilingFunc->name = internedConstants->add(previous().lexeme)->cast<StringObj>();
       }
       Local* local = &locals[localCount++];  // Stack slot zero is for VM’s own internal use.
       local->depth = 0;
@@ -200,7 +200,7 @@ struct Compiler {
       errorAtPrevious("expect expression.");
       return;
     }
-    auto canAssign = precedence <= PREC_ASSIGNMENT;
+    const auto canAssign = precedence <= PREC_ASSIGNMENT;
     (this->*prefixRule)(canAssign);
     while (precedence <= getRule(peek().type)->precedence) {  // The prefix expression already compiled might be an operand for the infix operator.
       advance();
@@ -218,6 +218,9 @@ struct Compiler {
     if (scopeDepth == 0) return;
     locals[localCount - 1].initialized = true;
   }
+  /**
+   * Mark the local variable as "initialized", or save it as a global at runtime.
+  */
   void defineVariable(std::optional<OpCodeType> varIdx) {
     if (scopeDepth > 0) {
       markInitialized();
@@ -227,8 +230,10 @@ struct Compiler {
       emitBytes(OpCode::OP_DEFINE_GLOBAL, varIdx.value());  // OpCode for defining the variable and storing its initial value.
     }
   }
+  /**
+   * Take the given token and add its lexeme to the chunk’s constant table as a string.
+  */
   auto identifierConstant(const Token& token) {
-    // Take the given token and add its lexeme to the chunk’s constant table as a string.
     return makeConstant(internedConstants->add(token.lexeme));
   }
   void addLocal(const Token* name) {
@@ -239,6 +244,9 @@ struct Compiler {
     local->name = name;
     local->depth = scopeDepth;
   }
+  /**
+   * Add variable as a local, and detect certain errors.
+  */
   void declareVariable(void) {
     if (scopeDepth == 0) return;
     const auto& name = previous();
@@ -385,6 +393,16 @@ struct Compiler {
       default: return;
     }
   }
+  void dot(bool canAssign) {
+    consume(TokenType::IDENTIFIER, "expect property name after '.'.");
+    const auto name = identifierConstant(previous());
+    if (canAssign && match(TokenType::EQUAL)) {  
+      expression();
+      emitBytes(OpCode::OP_SET_PROPERTY, name);
+    } else {
+      emitBytes(OpCode::OP_GET_PROPERTY, name);
+    }
+  }
   void binary(bool) {  // "Infix" expression, the left operand has been consumed.
     const auto& prevToken = previous();
     const auto opType = prevToken.type;
@@ -437,7 +455,7 @@ struct Compiler {
     emitBytes(OpCode::OP_CALL, argCount);
   }
   void expression(void) {
-    parsePrecedence(Precedence::PREC_ASSIGNMENT);
+    parsePrecedence(Precedence::PREC_ASSIGNMENT);  // Start with a relatively lower precedence.
   }
   void expressionStatement(void) {
     // Simply an expression followed by a semicolon.
@@ -630,14 +648,25 @@ struct Compiler {
     }
   }
   void funDeclaration(void) {
-    auto global = parseVariable("expect function name.");
+    auto varIdx = parseVariable("expect function name.");
     markInitialized();
     function(FunctionScope::TYPE_BODY);
-    defineVariable(global);
+    defineVariable(varIdx);
+  }
+  void classDeclaration(void) {
+    consume(TokenType::IDENTIFIER, "expect class name.");
+    const auto nameConstant = identifierConstant(previous());  // Add the name to the surrounding function’s constant table.
+    declareVariable();
+    emitBytes(OpCode::OP_CLASS, nameConstant);  // Create runtime representation.
+    defineVariable(nameConstant);  // Mark local or add the runtime entry to the global store.
+    consume(TokenType::LEFT_BRACE, "expect '{' before class body.");
+    consume(TokenType::RIGHT_BRACE, "expect '}' after class body.");
   }
   void declaration(void) {
     if (match(TokenType::FN)) {
       funDeclaration();
+    } else if (match(TokenType::CLASS)) {
+      classDeclaration();
     } else if (match(TokenType::VAR)) {
       varDeclaration();
     } else {

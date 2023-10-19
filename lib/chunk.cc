@@ -50,6 +50,9 @@ void ChunkDebugger::disassembleInstruction(const Chunk& chunk, typeVMCodeArray::
     case OpCode::OP_DEFINE_GLOBAL: return constantInstruction("OP_DEFINE_GLOBAL", chunk, offset);
     case OpCode::OP_GET_GLOBAL: return constantInstruction("OP_GET_GLOBAL", chunk, offset);
     case OpCode::OP_SET_GLOBAL: return constantInstruction("OP_SET_GLOBAL", chunk, offset);
+    case OpCode::OP_CLASS: return constantInstruction("OP_SET_GLOBAL", chunk, offset);
+    case OpCode::OP_GET_PROPERTY: return constantInstruction("OP_GET_PROPERTY", chunk, offset);
+    case OpCode::OP_SET_PROPERTY: return constantInstruction("OP_SET_PROPERTY", chunk, offset);
     case OpCode::OP_SET_LOCAL: return byteInstruction("OP_SET_LOCAL", "index", offset);
     case OpCode::OP_GET_LOCAL: return byteInstruction("OP_GET_LOCAL", "index", offset);
     case OpCode::OP_CALL: return byteInstruction("OP_CALL", "argno", offset);
