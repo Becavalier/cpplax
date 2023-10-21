@@ -12,4 +12,6 @@
 #define STACK_MAX (FRAMES_MAX * UINT8_COUNT)
 #define GC_HEAP_GROW_FACTOR 2
 
+constexpr char INITIALIZER_NAME[] = "init";
+
 #endif

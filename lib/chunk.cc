@@ -17,6 +17,17 @@ void ChunkDebugger::constantInstruction(
     printf("')\n");
     offset += 2;
   }
+void ChunkDebugger::invokeInstruction(
+  const char* name,
+  const Chunk& chunk, 
+  typeVMCodeArray::const_iterator& offset) {
+    const auto constantIdx = *(offset + 1);
+    const auto argCount = *(offset + 2);
+    printf("%-16s args(%d) index(%4d) '", name, argCount, constantIdx);
+    printValue(chunk.constants[constantIdx]);
+    printf("\n");
+    offset += 3;
+  }
 void ChunkDebugger::byteInstruction(
   const char* name, 
   const char* unit,
@@ -53,6 +64,7 @@ void ChunkDebugger::disassembleInstruction(const Chunk& chunk, typeVMCodeArray::
     case OpCode::OP_CLASS: return constantInstruction("OP_SET_GLOBAL", chunk, offset);
     case OpCode::OP_GET_PROPERTY: return constantInstruction("OP_GET_PROPERTY", chunk, offset);
     case OpCode::OP_SET_PROPERTY: return constantInstruction("OP_SET_PROPERTY", chunk, offset);
+    case OpCode::OP_METHOD: return constantInstruction("OP_METHOD", chunk, offset);
     case OpCode::OP_SET_LOCAL: return byteInstruction("OP_SET_LOCAL", "index", offset);
     case OpCode::OP_GET_LOCAL: return byteInstruction("OP_GET_LOCAL", "index", offset);
     case OpCode::OP_CALL: return byteInstruction("OP_CALL", "argno", offset);
@@ -93,6 +105,7 @@ void ChunkDebugger::disassembleInstruction(const Chunk& chunk, typeVMCodeArray::
     case OpCode::OP_GET_UPVALUE: return byteInstruction("OP_GET_UPVALUE", "index", offset);
     case OpCode::OP_SET_UPVALUE: return byteInstruction("OP_SET_UPVALUE", "index", offset);
     case OpCode::OP_CLOSE_UPVALUE: return simpleInstruction("OP_CLOSE_UPVALUE", offset);
+    case OpCode::OP_INVOKE: return invokeInstruction("OP_INVOKE", chunk, offset);
     default: {
       std::cout << "Unknow opcode: " << +instruction << '.' << std::endl;
       offset += 1;

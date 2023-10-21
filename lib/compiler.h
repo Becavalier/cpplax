@@ -33,6 +33,10 @@ enum Precedence : uint8_t {  // Precedence: lowest -> highest.
   PREC_PRIMARY
 };
 
+struct ClassCompiler {
+  struct ClassCompiler* enclosing;
+};
+
 struct ParseRule {
   typeParseFn prefix;
   typeParseFn infix;
@@ -52,7 +56,6 @@ struct Upvalue {
 };
 
 struct Compiler {
-  bool panicMode = false;
   Memory* mem;
   FuncObj* compilingFunc = nullptr;
   FunctionScope compilingScope = FunctionScope::TYPE_TOP_LEVEL;
@@ -62,7 +65,9 @@ struct Compiler {
   size_t localCount = 0;  // Tracks how many locals are in scope.
   size_t scopeDepth = 0;  // The number of blocks surrounding the current bit of code we’re compiling.
   std::vector<Token>::const_iterator current;
+  std::vector<Token>& tokens;
   Compiler* enclosing;
+  static ClassCompiler* currentClass;  // Point to a struct representing the current, innermost class being compiled.
   /**
    * Rule table for "Pratt Parser". The columns are:
    * - The function to compile a prefix expression starting with a token of that type.
@@ -103,14 +108,15 @@ struct Compiler {
     [TokenType::OR] = { nullptr, &Compiler::or_, Precedence::PREC_OR },
     [TokenType::RETURN] = { nullptr, nullptr, Precedence::PREC_NONE },
     [TokenType::SUPER] = { nullptr, nullptr, Precedence::PREC_NONE } ,
-    [TokenType::THIS] = { nullptr, nullptr, Precedence::PREC_NONE },
+    [TokenType::THIS] = { &Compiler::this_, nullptr, Precedence::PREC_NONE },
     [TokenType::TRUE] = { &Compiler::literal, nullptr, Precedence::PREC_NONE },
     [TokenType::VAR] = { nullptr, nullptr, Precedence::PREC_NONE },
     [TokenType::WHILE] = { nullptr, nullptr, Precedence::PREC_NONE },
     [TokenType::SOURCE_EOF] = { nullptr, nullptr, Precedence::PREC_NONE },
   };
   Compiler(
-    std::vector<Token>::const_iterator tokenIt, 
+    std::vector<Token>& tokens, 
+    std::vector<Token>::const_iterator tokenIt,
     Memory* memPtr,
     InternedConstants* constants = nullptr, 
     FunctionScope scope = FunctionScope::TYPE_TOP_LEVEL, 
@@ -120,13 +126,19 @@ struct Compiler {
     compilingScope(scope),
     internedConstants(constants), 
     current(tokenIt),
+    tokens(tokens),
     enclosing(enclosingCompiler) {
       if (scope != FunctionScope::TYPE_TOP_LEVEL) {
         compilingFunc->name = internedConstants->add(previous().lexeme)->cast<StringObj>();
       }
       Local* local = &locals[localCount++];  // Stack slot zero is for VM’s own internal use.
       local->depth = 0;
-      local->name = nullptr;  // Empty name.
+      if (scope == FunctionScope::TYPE_METHOD || scope == FunctionScope::TYPE_INITIALIZER) {
+        local->name = &tokens.back();
+        local->initialized = true;
+      } else {
+        local->name = nullptr;  // Empty name.
+      }
     }
   Compiler(const Compiler&) = delete;
   Compiler(const Compiler&&) = delete; 
@@ -149,16 +161,11 @@ struct Compiler {
     }
     errorAtCurrent(msg);
   }
-  void errorAt(const Token& token, const char* msg) {
-    if (panicMode) return;  // Minimize the number of cascaded compile errors that it reports.
-    panicMode = true;
-    Error::error(token, msg);  // Error::hadError -> true.
-  }
   void errorAtCurrent(const char* msg) {
-    errorAt(peek(), msg);
+    throw TokenError { peek(), msg };
   }
   void errorAtPrevious(const char* msg) {
-    errorAt(previous(), msg);  // Report an error at the location of the just consumed token.
+    throw TokenError { previous(), msg };  // Report an error at the location of the just consumed token.
   }
   void emitByte(OpCodeType byte) {
     currentChunk().addCode(byte, previous().line);
@@ -171,7 +178,12 @@ struct Compiler {
     currentChunk().addCode(byte, line);
   }
   void emitReturn(void) {
-    emitByte(OpCode::OP_NIL);
+    // Load the class instance onto the stack if it was returned from an initializer call.
+    if (compilingScope == FunctionScope::TYPE_INITIALIZER) {
+      emitBytes(OpCode::OP_GET_LOCAL, 0);
+    } else {
+      emitByte(OpCode::OP_NIL);
+    }
     emitByte(OpCode::OP_RETURN);
   }
   void emitConstant(const typeRuntimeValue& value) {
@@ -181,7 +193,6 @@ struct Compiler {
     auto constantIdx = currentChunk().addConstant(value);
     if (constantIdx > UINT8_MAX) {
       errorAtPrevious("too many constants in one chunk.");
-      constantIdx = 0;
     }
     return static_cast<OpCodeType>(constantIdx);
   }
@@ -198,7 +209,6 @@ struct Compiler {
     auto prefixRule = getRule(previous().type)->prefix;
     if (prefixRule == nullptr) {
       errorAtPrevious("expect expression.");
-      return;
     }
     const auto canAssign = precedence <= PREC_ASSIGNMENT;
     (this->*prefixRule)(canAssign);
@@ -240,9 +250,9 @@ struct Compiler {
     if (localCount == UINT8_COUNT) {
       errorAtCurrent("too many local variables in function.");
     }
-    auto local = &locals[localCount++];
-    local->name = name;
-    local->depth = scopeDepth;
+    auto& local = locals[localCount++];
+    local.name = name;
+    local.depth = scopeDepth;
   }
   /**
    * Add variable as a local, and detect certain errors.
@@ -296,7 +306,6 @@ struct Compiler {
     }
     if (upvalueCount == UINT8_COUNT) {
       errorAtCurrent("too many closure variables in function.");
-      return 0;
     }
     upvalues[upvalueCount].isLocal = isLocal;
     upvalues[upvalueCount].index = index;
@@ -364,9 +373,15 @@ struct Compiler {
       emitBytes(getOp, varIndex);
     }
   }
+  void this_(bool) {
+    if (currentClass == nullptr) {
+      errorAtCurrent("can't use 'this' outside of a class.");
+    }
+    variable(false);  // Treat "this" as a lexically scoped local variable whose value gets initialized.
+  }
   void variable(bool canAssign) {
     /**
-     * This function should look for and consume the = only if, - 
+     * This function should look for and consume the "=" only if, - 
      * it’s in the context of a low-precedence expression, to avoid case like below:
      * a * b = c + d;
     */
@@ -391,16 +406,6 @@ struct Compiler {
       case TokenType::MINUS: emitByte(OpCode::OP_NEGATE, line); break;
       case TokenType::BANG: emitByte(OpCode::OP_NOT, line); break;
       default: return;
-    }
-  }
-  void dot(bool canAssign) {
-    consume(TokenType::IDENTIFIER, "expect property name after '.'.");
-    const auto name = identifierConstant(previous());
-    if (canAssign && match(TokenType::EQUAL)) {  
-      expression();
-      emitBytes(OpCode::OP_SET_PROPERTY, name);
-    } else {
-      emitBytes(OpCode::OP_GET_PROPERTY, name);
     }
   }
   void binary(bool) {  // "Infix" expression, the left operand has been consumed.
@@ -449,6 +454,20 @@ struct Compiler {
     }
     consume(TokenType::RIGHT_PAREN, "expect ')' after arguments.");
     return argCount;
+  }
+  void dot(bool canAssign) {
+    consume(TokenType::IDENTIFIER, "expect property name after '.'.");
+    const auto name = identifierConstant(previous());
+    if (canAssign && match(TokenType::EQUAL)) {  
+      expression();
+      emitBytes(OpCode::OP_SET_PROPERTY, name);
+    } else if(match(TokenType::LEFT_PAREN)) {
+      const auto argCount = argumentList();
+      emitBytes(OpCode::OP_INVOKE, name);
+      emitByte(argCount);
+    } else {
+      emitBytes(OpCode::OP_GET_PROPERTY, name);
+    }
   }
   void call(bool) {
     auto argCount = argumentList();
@@ -584,6 +603,9 @@ struct Compiler {
     if (match(TokenType::SEMICOLON)) {
       emitReturn();
     } else {
+      if (compilingScope == FunctionScope::TYPE_INITIALIZER) {
+        errorAtCurrent("can't return a value from an initializer.");
+      }
       expression();
       consume(TokenType::SEMICOLON, "expect ';' after return value.");
       emitByte(OpCode::OP_RETURN);
@@ -634,7 +656,7 @@ struct Compiler {
     return endCompiler();
   }
   void function(FunctionScope scope) {
-    Compiler compiler { current, mem, internedConstants, scope, this };
+    Compiler compiler { tokens, current, mem, internedConstants, scope, this };
     const auto compiledFunc = compiler.functionCore();
     current = compiler.current;  // Update compiling function.
     if (compiledFunc->upvalueCount > 0) {
@@ -653,29 +675,55 @@ struct Compiler {
     function(FunctionScope::TYPE_BODY);
     defineVariable(varIdx);
   }
+  void method(void) {
+    consume(TokenType::IDENTIFIER, "expect method name.");
+    const auto constant = identifierConstant(previous());
+    auto scope = FunctionScope::TYPE_METHOD;
+    if (previous().lexeme == INITIALIZER_NAME) {
+      scope = FunctionScope::TYPE_INITIALIZER;
+    }
+    function(scope);
+    emitBytes(OpCode::OP_METHOD, constant);
+  }
   void classDeclaration(void) {
     consume(TokenType::IDENTIFIER, "expect class name.");
-    const auto nameConstant = identifierConstant(previous());  // Add the name to the surrounding function’s constant table.
+    const auto& className = previous();
+    const auto nameConstant = identifierConstant(className);  // Add the name to the surrounding function’s constant table.
     declareVariable();
     emitBytes(OpCode::OP_CLASS, nameConstant);  // Create runtime representation.
     defineVariable(nameConstant);  // Mark local or add the runtime entry to the global store.
+
+    // Add the compiling class to the class chain.
+    ClassCompiler classCompiler;
+    classCompiler.enclosing = currentClass;
+    currentClass = &classCompiler;
+
+    namedVariable(className, false);  // Load the class onto the stack.
     consume(TokenType::LEFT_BRACE, "expect '{' before class body.");
+    while (!check(TokenType::RIGHT_BRACE) && !check(TokenType::SOURCE_EOF)) {
+      method();
+    }
     consume(TokenType::RIGHT_BRACE, "expect '}' after class body.");
+    emitByte(OpCode::OP_POP);
+    currentClass = currentClass->enclosing;  // Update the class compiling chain.
   }
   void declaration(void) {
-    if (match(TokenType::FN)) {
-      funDeclaration();
-    } else if (match(TokenType::CLASS)) {
-      classDeclaration();
-    } else if (match(TokenType::VAR)) {
-      varDeclaration();
-    } else {
-      statement();
+    try {
+      if (match(TokenType::FN)) {
+        funDeclaration();
+      } else if (match(TokenType::CLASS)) {
+        classDeclaration();
+      } else if (match(TokenType::VAR)) {
+        varDeclaration();
+      } else {
+        statement();
+      }
+    } catch(TokenError& err) {
+      Error::error(err.token, err.msg);  // Error::hadError -> true.
+      synchronize();
     }
-    if (panicMode) synchronize();
   }
   void synchronize(void) {
-    panicMode = false;
     while (peek().type != TokenType::SOURCE_EOF) {
       if (previous().type == TokenType::SEMICOLON) return;
       switch (peek().type) {
@@ -695,11 +743,9 @@ struct Compiler {
   FuncObj* endCompiler(void) {
     emitReturn();
 #ifdef DEBUG_PRINT_CODE
-    if (!Error::hadError) {
-      ChunkDebugger::disassembleChunk(currentChunk(), compilingFunc->name != nullptr ? compilingFunc->name->str.data() : "<script>");
-    }
+    ChunkDebugger::disassembleChunk(currentChunk(), compilingFunc->name != nullptr ? compilingFunc->name->str.data() : "<script>");
 #endif 
-    return Error::hadError ? nullptr : compilingFunc;
+    return compilingFunc;
   }
   auto compile(void) {
     mem->setCompiler(this);

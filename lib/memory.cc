@@ -39,14 +39,19 @@ void Memory::markValue(typeRuntimeValue& value) {
   }
 }
 
-void Memory::markTable(typeVMStore& map) {
+template<typename T> 
+void Memory::markTable(typeVMStore<T>& map) {
   for (auto& [key, value] : map) {
     markObject(key);
-    markValue(value);
+    if constexpr (std::is_same_v<T, Obj*>) {
+      markObject(value);
+    } else {
+      markValue(value); 
+    }
   }
 }
 
-void Memory::markArray(typeRuntimeValueArray& array) {
+void Memory::markArray(typeRuntimeConstantArray& array) {
   for (auto& v : array) {
     markValue(v);
   }
@@ -73,6 +78,7 @@ void Memory::markRoots(void) {
   }
   markTable(vm->globals);
   markCompilerRoots(compiler);
+  markObject(vm->initString);
 }
 
 void Memory::blackenObject(Obj* obj) {
@@ -107,12 +113,19 @@ void Memory::blackenObject(Obj* obj) {
     case ObjType::OBJ_CLASS: {
       auto klass = obj->cast<ClassObj>();
       markObject(klass->name);
+      markTable(klass->methods);
       break;
     }
     case ObjType::OBJ_INSTANCE: {
       auto instance = obj->cast<InstanceObj>();
       markObject(instance->klass);
       markTable(instance->fields);
+      break;
+    }
+    case ObjType::OBJ_BOUND_METHOD: {
+      auto bound = obj->cast<BoundMethodObj>();
+      markValue(bound->receiver);
+      markObject(bound->method);
       break;
     }
   }

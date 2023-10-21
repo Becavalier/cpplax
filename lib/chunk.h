@@ -21,7 +21,7 @@ struct Debugger;
 struct Chunk {
   friend struct Debugger;
   typeVMCodeArray code;  // A heterogeneous storage (saving both opcodes and operands).
-  typeRuntimeValueArray constants;
+  typeRuntimeConstantArray constants;
   std::vector<size_t> lines;  // Save line information with run-length encoding.
   Chunk() = default;
   void addCode(const std::vector<std::pair<OpCodeType, size_t>>& snapshot) {
@@ -73,6 +73,7 @@ struct Chunk {
 struct ChunkDebugger {
   static void simpleInstruction(const char*, typeVMCodeArray::const_iterator&);
   static void constantInstruction(const char*, const Chunk&, typeVMCodeArray::const_iterator&);
+  static void invokeInstruction(const char*, const Chunk&, typeVMCodeArray::const_iterator&);
   static void byteInstruction(const char*, const char*, typeVMCodeArray::const_iterator&);
   static void jumpInstruction(const char*, int, const Chunk&, typeVMCodeArray::const_iterator&);
   static void disassembleInstruction(const Chunk&, typeVMCodeArray::const_iterator&);

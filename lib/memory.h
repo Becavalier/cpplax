@@ -50,9 +50,9 @@ struct Memory {
   void free(bool = true);
   void markObject(Obj*);
   void markValue(typeRuntimeValue&);
-  void markTable(typeVMStore&);
+  template<typename T> void markTable(typeVMStore<T>&);
   void markCompilerRoots(Compiler*);
-  void markArray(typeRuntimeValueArray&);
+  void markArray(typeRuntimeConstantArray&);
   void traceReferences(void);
   void blackenObject(Obj*);
   void sweep(void);

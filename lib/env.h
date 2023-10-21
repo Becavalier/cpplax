@@ -31,7 +31,7 @@ class Env : public std::enable_shared_from_this<Env> {
     const auto target = values.find(name.lexeme);
     if (target != values.end()) return target->second;
     if (enclosing != nullptr) return enclosing->get(name);  // Look up from the upper scope.
-    throw InterpreterError(name, "undefined variable '" + std::string { name.lexeme } + "'.");
+    throw TokenError(name, "undefined variable '" + std::string { name.lexeme } + "'.");
   }
   void assignAt(int distance, const Token& name, const typeRuntimeValue& value) {
     ancestor(distance)->values[name.lexeme] = value;
@@ -45,7 +45,7 @@ class Env : public std::enable_shared_from_this<Env> {
       enclosing->assign(name, value);
       return;
     }
-    throw InterpreterError(name, "undefined variable '" + std::string { name.lexeme } + "'.");
+    throw TokenError(name, "undefined variable '" + std::string { name.lexeme } + "'.");
   }
 };
 

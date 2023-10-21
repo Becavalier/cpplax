@@ -36,15 +36,17 @@ struct VM {
   typeVMFrames frames;
   typeVMStack::iterator stackTop;  // Points to the element that just past the last used element.
   InternedConstants internedConstants { mem };
-  typeVMStore globals;
-  UpvalueObj* openUpvalues = nullptr;
+  typeVMStore<> globals;
   CallFrame* currentFrame;
+  UpvalueObj* openUpvalues = nullptr;
+  Obj* initString = nullptr;
   // For GC.
   std::vector<Obj*> grayStack = {};
   bool isStatusOk = true;
   explicit VM(std::vector<Token>& tokens, Memory* mem) : mem(mem), frameCount(0), stackTop(stack.begin()) {
+    tokens.push_back({ TokenType::THIS, "this", std::monostate {}, 0 });  // Referenced by VM local.
     // Compiling into byte codes, it returns a new "FuncObj" containing the compiled top-level code. 
-    const auto function = Compiler { tokens.cbegin(), mem, &internedConstants }.compile();
+    const auto function = Compiler { tokens, tokens.cbegin(), mem, &internedConstants }.compile();
     if (!Error::hadError) {
       tokens.clear();
       initVM(function);
@@ -67,6 +69,10 @@ struct VM {
   }
   auto& peek(size_t distance = 0) const {
     return *(stackTop - 1 - distance);
+  }
+  template<typename T>
+  T& peekOfType(size_t distance = 0) const {
+    return std::get<T>(peek(distance));
   }
   auto& pop(void) {
     --stackTop;
@@ -102,13 +108,12 @@ struct VM {
   auto& readConstant(void) {
     return retrieveFuncObj(currentFrame->frameEntity)->chunk.constants[readByte()];
   }
-  auto readConstantOfExpectedType(ObjType type) {
-    const auto name = std::get<Obj*>(readConstant());
-    assert(name->type == type);  // Runtime assertion.
-    return name;
+  template<typename T>
+  T& readConstantOfType(void) {
+    return std::get<T>(readConstant());
   }
   void call(Obj*, uint8_t);
-  void callValue(typeRuntimeValue, uint8_t);
+  void callValue(typeRuntimeValue&, uint8_t);
   void defineNative(const char*, NativeObj::typeNativeFn, uint8_t);
   UpvalueObj* captureUpvalue(typeRuntimeValue*);
   void closeUpvalues(typeRuntimeValue*);
@@ -116,6 +121,10 @@ struct VM {
   void stackTrace(void);
   void freeVM(void);
   VMResult interpret(void);
+  void defineMethod(Obj*);
+  void bindMethod(ClassObj*, Obj*);
+  void invokeFromClass(ClassObj*, Obj*, uint8_t);
+  void invoke(Obj*, uint8_t);
 };
 
 #endif

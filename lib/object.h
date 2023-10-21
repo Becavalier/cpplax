@@ -101,6 +101,7 @@ struct NativeObj : public Obj {
 
 struct ClassObj : public Obj {
   StringObj* name;
+  typeVMStore<Obj*> methods;
   ClassObj(Obj** next, StringObj* name) : Obj(ObjType::OBJ_CLASS, *next), name(name) {
     *next = this;
   }
@@ -109,18 +110,26 @@ struct ClassObj : public Obj {
 
 struct InstanceObj : public Obj {
   ClassObj* klass;
-  typeVMStore fields = {};
+  typeVMStore<> fields = {};
   InstanceObj(Obj** next, ClassObj* klass) : Obj(ObjType::OBJ_INSTANCE, *next), klass(klass) {
     *next = this;
   }
   ~InstanceObj() {}
 };
 
+struct BoundMethodObj : public Obj {
+  typeRuntimeValue receiver;   // "InstanceObj*".
+  Obj* method;
+  BoundMethodObj(Obj** next, typeRuntimeValue& receiver, Obj* method) : Obj(ObjType::OBJ_BOUND_METHOD, *next), receiver(receiver), method(method) {
+    *next = this;
+  }
+  ~BoundMethodObj() {}
+};  
+
 // Helper functions.
 inline auto retrieveFuncObj(Obj* obj) { 
   return obj->type == ObjType::OBJ_FUNCTION ? static_cast<FuncObj*>(obj) : obj->cast<ClosureObj>()->function;  // Falling through to "ClosureObj".
 }
-
 
 template<typename T>
 const char* Obj::printObjNameByType(void) {
@@ -130,6 +139,9 @@ const char* Obj::printObjNameByType(void) {
   else if constexpr (std::is_same_v<K, ClosureObj>) return "ClosureObj";
   else if constexpr (std::is_same_v<K, StringObj>) return "StringObj";
   else if constexpr (std::is_same_v<K, UpvalueObj>) return "UpvalueObj";
+  else if constexpr (std::is_same_v<K, ClassObj>) return "ClassObj";
+  else if constexpr (std::is_same_v<K, InstanceObj>) return "InstanceObj";
+  else if constexpr (std::is_same_v<K, BoundMethodObj>) return "BoundMethodObj";
   return "Unknown Type";
 }
 

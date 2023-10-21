@@ -13,6 +13,7 @@ std::string Obj::printObjNameByEnum(Obj* obj) {
     case ObjType::OBJ_UPVALUE: return "<upvalue>";
     case ObjType::OBJ_CLASS: return "<class " + obj->cast<ClassObj>()->name->str + ">"; 
     case ObjType::OBJ_INSTANCE: return "<instance " + obj->cast<InstanceObj>()->klass->name->str + ">";
+    case ObjType::OBJ_BOUND_METHOD: return printFunction(retrieveFuncObj(obj->cast<BoundMethodObj>()->method));
     default: return "<internal>";
   }
 }

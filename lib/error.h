@@ -17,11 +17,11 @@ struct VMError : public std::exception {
   }
 };
 
-struct InterpreterError : public std::exception {
+struct TokenError : public std::exception {
   const Token& token;
   const std::string msg;
  public:
-  InterpreterError(const Token& token, const std::string& msg) : token(token), msg(msg) {}
+  TokenError(const Token& token, const std::string& msg) : token(token), msg(msg) {}
   const char* what(void) const noexcept {
     return msg.data();
   }
@@ -29,7 +29,7 @@ struct InterpreterError : public std::exception {
 
 struct Error {
   static bool hadError;
-  static bool hadInterpreterError;
+  static bool hadTokenError;
   static bool hadVMError;
   static void report(
     size_t line, 
@@ -49,9 +49,9 @@ struct Error {
   static void error(size_t line, std::string_view where, const std::string_view msg) {
     report(line, where, msg);
   }
-  static void interpretError(const InterpreterError& err) {
+  static void tokenError(const TokenError& err) {
     error(err.token, err.what());
-    hadInterpreterError = true;
+    hadTokenError = true;
   }
   static void vmError(const VMError& err) {
     error(err.line, err.what());

@@ -1,3 +1,4 @@
+#include <string>
 #include "./vm.h"
 #include "./native.h"
 #include "./memory.h"
@@ -5,6 +6,7 @@
 
 void VM::initVM(FuncObj* function) {
   mem->setVM(this);
+  initString = internedConstants.add(INITIALIZER_NAME);
   defineNative("print", printNative, 1);
   defineNative("clock", clockNative, 0);
   push(function);  // Save the top-level function onto the stack.
@@ -12,6 +14,7 @@ void VM::initVM(FuncObj* function) {
 }
 
 void VM::freeVM(void) {
+  initString = nullptr;
   mem->free();
 } 
 
@@ -63,14 +66,14 @@ void VM::call(Obj* obj, uint8_t argCount) {
   currentFrame->slots = stackTop - argCount - 1;
 }
 
-void VM::callValue(typeRuntimeValue callee, uint8_t argCount) {
+void VM::callValue(typeRuntimeValue& callee, uint8_t argCount) {
   if (std::holds_alternative<Obj*>(callee)) {
     const auto calleeObj = std::get<Obj*>(callee);
     switch (calleeObj->type) {
       case ObjType::OBJ_NATIVE: {
         const auto nativeFunc = calleeObj->cast<NativeObj>();;
         if (nativeFunc->arity != argCount) {
-          throwRuntimeError("incorrect number of arguments passed to native function '" + nativeFunc->name->str + "'." );
+          throwRuntimeError("incorrect number of arguments passed to native function '" + nativeFunc->name->str + "'.");
         }
         const auto result = nativeFunc->function(argCount, stackTop - argCount);
         stackTop -= argCount + 1;
@@ -80,6 +83,34 @@ void VM::callValue(typeRuntimeValue callee, uint8_t argCount) {
       case ObjType::OBJ_CLASS: {
         const auto klass = calleeObj->cast<ClassObj>();
         *(stackTop - argCount - 1) = mem->makeObj<InstanceObj>(klass);  // Replace the class object being called to its instance.
+        decltype(klass->methods)::iterator initializer;
+        if ((initializer = klass->methods.find(initString)) != klass->methods.end()) {
+          call(initializer->second, argCount);
+        } else if (argCount > 0) {
+          throwRuntimeError("Expected 0 arguments but got " + std::to_string(argCount) + " .");
+        }
+        return;
+      }
+      case ObjType::OBJ_BOUND_METHOD: {
+       /**
+                    frame->slots                          StackTop
+                          │                                   │
+                          ▼        A() CallFrame              ▼
+            0──────1──────2─────────────────────3──────4──────5
+            │script│  10  │    BoundMethod A    │ arg1 │ arg2 │
+            └──────┴──────0─────────────────────1──────2──────3                                
+                         
+                                  ┌────────┐
+                                  │ method │───────────┐
+                                  └────────┘    ┼      ▼      ┼
+            0──────1──────2─────────────────────3──────4──────5
+            │script│  10  │   receiver (this)   │ arg1 │ arg2 │
+            └──────┴──────0─────────────────────1──────2──────3
+                          ┼        Slot 0       ┼ 
+        */
+        const auto bound = calleeObj->cast<BoundMethodObj>();
+        *(stackTop - argCount - 1) = bound->receiver;  // Save the instance to slot 0 of the call frame.
+        call(bound->method, argCount);
         return;
       }
       default: {
@@ -89,6 +120,61 @@ void VM::callValue(typeRuntimeValue callee, uint8_t argCount) {
     }
   }
   throwRuntimeError("can only call functions and classes.");
+}
+
+void VM::defineMethod(Obj* name) {
+  const auto method = peekOfType<Obj*>();
+  auto klass = peekOfType<Obj*>(1)->cast<ClassObj>();
+  klass->methods[name] = method;
+  pop();  // Pop the method function (or closure).
+}
+
+/**
+ * Bind calling method to its class instance.
+*/
+void VM::bindMethod(ClassObj* klass, Obj* name) {
+  const auto& method =klass->methods.find(name);
+  if (method == klass->methods.end()) {
+    throwRuntimeError("undefined property '" + name->cast<StringObj>()->str + "'.");
+  }
+  auto bound = mem->makeObj<BoundMethodObj>(peek(0), method->second);
+  pop();
+  push(bound);  // Save the decorated method onto the stack.
+}
+
+void VM::invokeFromClass(ClassObj* klass, Obj* name, uint8_t argCount) {
+  const auto& method =klass->methods.find(name); 
+  if (method == klass->methods.end()) {
+    throwRuntimeError("undefined property '" + name->cast<StringObj>()->str + "'.");
+  }
+  call(method->second, argCount);
+}
+
+void VM::invoke(Obj* name, uint8_t argCount) {
+  /**
+                ┌───────┐ name ┌────────┐
+    (Slot 0) -> | class |─────>│ method │────────────┐
+                └───────┘      └────────┘            |
+                                              ┼      ▼      ┼
+          0──────1──────2─────────────────────3──────4──────5
+          │script│  10  │   instance (this)   │ arg1 │ arg2 │
+          └──────┴──────0─────────────────────1──────2──────3
+                        ┼        Slot 0       ┼ 
+  */
+  Obj* receiverObj = nullptr;
+  if (!std::holds_alternative<Obj*>(peek(argCount)) 
+    || (receiverObj = std::get<Obj*>(peek(argCount)))->type != ObjType::OBJ_INSTANCE) {
+    throwRuntimeError("only instances have methods.");
+  }
+  auto instance = receiverObj->cast<InstanceObj>();
+  // Field access gose first.
+  const auto valIt = instance->fields.find(name);
+  if (valIt != instance->fields.end()) {
+    *(stackTop - argCount - 1) = valIt->second;
+    return callValue(valIt->second, argCount);
+  } else {
+    return invokeFromClass(instance->klass, name, argCount);
+  }
 }
 
 VMResult VM::run(void) {
@@ -116,6 +202,7 @@ VMResult VM::run(void) {
       case OpCode::OP_ADD: {
         const auto y = pop();
         const auto x = pop();
+        // TODO: supporting concatenating string and number.
         if (std::holds_alternative<Obj*>(x) && std::holds_alternative<Obj*>(y)) {
           const auto heapX = std::get<Obj*>(x);
           const auto heapY = std::get<Obj*>(y);
@@ -124,6 +211,7 @@ VMResult VM::run(void) {
             break;
           }
         } else {
+          // FIXME: error when variant has no value of numeric type.
           push(std::get<typeRuntimeNumericValue>(x) +  std::get<typeRuntimeNumericValue>(y));
           break;
         }
@@ -187,11 +275,11 @@ VMResult VM::run(void) {
       case OpCode::OP_LESS: NUM_BINARY_OP(<); break;
       case OpCode::OP_POP: pop(); break;
       case OpCode::OP_DEFINE_GLOBAL: {
-        globals[readConstantOfExpectedType(ObjType::OBJ_STRING)] = pop();
+        globals[readConstantOfType<Obj*>()] = pop();
         break;
       }
       case OpCode::OP_GET_GLOBAL: {
-        const auto name = readConstantOfExpectedType(ObjType::OBJ_STRING);
+        const auto name = readConstantOfType<Obj*>();
         const auto value = globals.find(name);
         if (value == globals.end()) {
           throwRuntimeError("undefined variable '" + name->cast<StringObj>()->str + "'.");
@@ -200,7 +288,7 @@ VMResult VM::run(void) {
         break;
       }
       case OpCode::OP_SET_GLOBAL: {
-        const auto name = readConstantOfExpectedType(ObjType::OBJ_STRING);
+        const auto name = readConstantOfType<Obj*>();
          if (!globals.contains(name)) {
           throwRuntimeError("undefined variable '" + name->cast<StringObj>()->str + "'.");
          }
@@ -253,7 +341,7 @@ VMResult VM::run(void) {
         break;
       }
       case OpCode::OP_CLOSURE: {
-        auto closure = mem->makeObj<ClosureObj>(retrieveFuncObj(std::get<Obj*>(readConstant())));
+        auto closure = mem->makeObj<ClosureObj>(retrieveFuncObj(readConstantOfType<Obj*>()));
         push(closure);
         for (uint32_t i = 0; i < closure->upvalueCount; i++) {
           uint8_t isLocal = readByte();
@@ -272,7 +360,7 @@ VMResult VM::run(void) {
         break;
       }
       case OpCode::OP_CLASS: {
-        const auto name = readConstantOfExpectedType(ObjType::OBJ_STRING);
+        const auto name = readConstantOfType<Obj*>();
         push(mem->makeObj<ClassObj>(name->cast<StringObj>()));
         break;
       }
@@ -282,14 +370,15 @@ VMResult VM::run(void) {
           throwRuntimeError("only instances have properties.");
         }
         auto instance = obj->cast<InstanceObj>();
-        const auto name = readConstantOfExpectedType(ObjType::OBJ_STRING);
+        const auto name = readConstantOfType<Obj*>();
         const auto valIt = instance->fields.find(name);
         if (valIt != instance->fields.end()) {
-          pop();
+          pop();  // Pop the instance object.
           push(valIt->second);
-          break;
+        } else {
+          bindMethod(instance->klass, name);
         }
-        throwRuntimeError("undefined property '" + name->cast<StringObj>()->str + "'.");
+        break;
       }
       case OpCode::OP_SET_PROPERTY: {
         Obj* obj = nullptr;
@@ -297,11 +386,22 @@ VMResult VM::run(void) {
           throwRuntimeError("only instances have properties.");
         }
         auto instance = obj->cast<InstanceObj>();
-        const auto name = readConstantOfExpectedType(ObjType::OBJ_STRING);
+        const auto name = readConstantOfType<Obj*>();
         instance->fields[name] = peek(0);
         const auto value = pop();
         pop();
         push(value);  // Leave the assigned value on the stack.
+        break;
+      }
+      case OpCode::OP_METHOD: {
+        defineMethod(readConstantOfType<Obj*>());
+        break;
+      }
+      case OpCode::OP_INVOKE: {
+        const auto methodName = readConstantOfType<Obj*>();
+        const auto argCount = readByte();
+        invoke(methodName, argCount);
+        currentFrame = &frames[frameCount - 1];  // Update frame to the latest called method.
         break;
       }
     }

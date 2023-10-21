@@ -119,7 +119,7 @@ struct ClassInstance : public std::enable_shared_from_this<ClassInstance> {
     if (method != nullptr) {
       return method->bind(shared_from_this());  // Change method's closure and bind it to new scope.
     }
-    throw InterpreterError { name, "undefined property '" + std::string { name.lexeme } + "'." };
+    throw TokenError { name, "undefined property '" + std::string { name.lexeme } + "'." };
   }
   void set(const Token& name, typeRuntimeValue value) {
     fields[name.lexeme] = value;
@@ -197,11 +197,11 @@ struct Interpreter : public ExprVisitor, public StmtVisitor {
   }
   void checkNumberOperand(const Token& op, const typeRuntimeValue& operand) const {
     if (std::holds_alternative<typeRuntimeNumericValue>(operand)) return;
-    throw InterpreterError { op, "operand must be a number." };
+    throw TokenError { op, "operand must be a number." };
   }
   void checkNumberOperands(const Token& op, const typeRuntimeValue& left, const typeRuntimeValue& right) const {
     if (std::holds_alternative<typeRuntimeNumericValue>(left) && std::holds_alternative<typeRuntimeNumericValue>(right)) return;
-    throw InterpreterError { op, "operands must be numbers." };
+    throw TokenError { op, "operands must be numbers." };
   }
   typeRuntimeValue lookUpVariable(const Token& name, Expr::sharedConstExprPtr expr) {
     const auto distance = locals.find(expr);
@@ -306,7 +306,7 @@ struct Interpreter : public ExprVisitor, public StmtVisitor {
             return (std::ostringstream {} << std::get<std::string_view>(left) << std::get<std::string_view>(right)).str();
           }
         }
-        throw InterpreterError { expr->op, "operand must be type of number or string." };
+        throw TokenError { expr->op, "operand must be type of number or string." };
       }
       case TokenType::SLASH: {
         checkNumberOperands(expr->op, left, right);
@@ -327,11 +327,11 @@ struct Interpreter : public ExprVisitor, public StmtVisitor {
       arguments.push_back(evaluate(argument));  // Save evaluated args.
     }
     if (!std::holds_alternative<std::shared_ptr<Invokable>>(callee)) {  // Check if it's callable.
-      throw InterpreterError { expr->paren, "can only call functions and classes." };
+      throw TokenError { expr->paren, "can only call functions and classes." };
     }
     const auto function = std::get<std::shared_ptr<Invokable>>(callee);
     if (arguments.size() != function->arity()) {  // Check if it matches the calling arity.
-      throw InterpreterError { expr->paren, "expected " + std::to_string(function->arity()) + " arguments but got " + std::to_string( arguments.size()) + "." };
+      throw TokenError { expr->paren, "expected " + std::to_string(function->arity()) + " arguments but got " + std::to_string( arguments.size()) + "." };
     }
     return function->invoke(this, arguments);
   }
@@ -339,12 +339,12 @@ struct Interpreter : public ExprVisitor, public StmtVisitor {
     auto obj = evaluate(expr->obj);
     auto vp = std::get_if<std::shared_ptr<ClassInstance>>(&obj);  // Only "ClassInstance" is able to have a getter.
     if (vp != nullptr) return (*vp)->get(expr->name);
-    throw InterpreterError { expr->name, "only instances have properties." };
+    throw TokenError { expr->name, "only instances have properties." };
   }
   typeRuntimeValue visitSetExpr(std::shared_ptr<const SetExpr> expr) override {
     auto obj = evaluate(expr->obj);
     auto vp = std::get_if<std::shared_ptr<ClassInstance>>(&obj);  // Only "ClassInstance" is able to have a setter.
-    if (vp == nullptr) throw InterpreterError { expr->name, "only instances have fields." };
+    if (vp == nullptr) throw TokenError { expr->name, "only instances have fields." };
     auto value = evaluate(expr->value);
     (*vp)->set(expr->name, value);
     return value;
@@ -355,7 +355,7 @@ struct Interpreter : public ExprVisitor, public StmtVisitor {
     auto thisInstance = std::get<std::shared_ptr<ClassInstance>>(env->getAt(distance - 1, "this"));
     auto method = superClass->findMethod(expr->method.lexeme);
     if (method == nullptr) {
-      throw InterpreterError { expr->method, "undefined property '" + std::string { expr->method.lexeme } + "'." };
+      throw TokenError { expr->method, "undefined property '" + std::string { expr->method.lexeme } + "'." };
     }
     return method->bind(thisInstance);
   }
@@ -404,11 +404,11 @@ struct Interpreter : public ExprVisitor, public StmtVisitor {
       const auto superClassPtr = std::get_if<std::shared_ptr<Invokable>>(&superClassVal);
       const auto invalidSuperErrorMsg = "super class must be a class.";
       if (superClassPtr == nullptr) {
-        throw InterpreterError { stmt->superClass->name, invalidSuperErrorMsg };
+        throw TokenError { stmt->superClass->name, invalidSuperErrorMsg };
       } else {
         superClass = std::dynamic_pointer_cast<Class>(*superClassPtr);
         if (superClass == nullptr) {
-          throw InterpreterError { stmt->superClass->name, invalidSuperErrorMsg };
+          throw TokenError { stmt->superClass->name, invalidSuperErrorMsg };
         }
       }
     }
@@ -439,8 +439,8 @@ struct Interpreter : public ExprVisitor, public StmtVisitor {
       for (const auto& statement : statements) {
         execute(statement);
       }
-    } catch (const InterpreterError& interpretError) {
-      Error::interpretError(interpretError);
+    } catch (const TokenError& tokenError) {
+      Error::tokenError(tokenError);
     }
   }
 };

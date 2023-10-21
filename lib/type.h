@@ -63,7 +63,6 @@ enum TokenType : uint8_t {
   WHILE, 
   SOURCE_EOF,
   TOTAL,
-  _ZOMBIE_,
 };
 
 /**
@@ -127,6 +126,8 @@ enum OpCode : OpCodeType {
   OP_CLASS,
   OP_SET_PROPERTY,
   OP_GET_PROPERTY,
+  OP_METHOD,
+  OP_INVOKE,
 };
 
 enum class VMResult : uint8_t {
@@ -143,11 +144,14 @@ enum class ObjType : uint8_t {
   OBJ_UPVALUE,
   OBJ_CLASS,
   OBJ_INSTANCE,
+  OBJ_BOUND_METHOD,
 };
 
 enum class FunctionScope : uint8_t {
-  TYPE_BODY,
   TYPE_TOP_LEVEL,
+  TYPE_BODY,
+  TYPE_METHOD,
+  TYPE_INITIALIZER,
 };
 
 using typeRuntimeValue = 
@@ -164,8 +168,9 @@ using typeRuntimeValue =
     // VM & Compiler fieldds.
     Obj*  // Pointer to the heap value.
   >;
-using typeRuntimeValueArray = std::vector<typeRuntimeValue>;
+using typeRuntimeConstantArray = std::vector<typeRuntimeValue>;
 using typeVMStack = std::array<typeRuntimeValue, STACK_MAX>;
-using typeVMStore = std::unordered_map<Obj*, typeRuntimeValue>;
+template<typename T = typeRuntimeValue> 
+using typeVMStore = std::unordered_map<Obj*, T>;
 
 #endif
