@@ -1,12 +1,22 @@
-class Oops {
-  init() {
-    fn f() {
-      print(this);
-    }
+class Doughnut {
+  cook() {
+    print("Dunk in the fryer.");
+    this.finish("sprinkles");
+  }
 
-    this.field = f;
+  finish(ingredient) {
+    print("Finish with " + ingredient + this.a);
   }
 }
 
-var oops = Oops();
-oops.field();
+class Cruller < Doughnut {
+  init() {
+    this.a = "!23";
+  }
+  finish(ingredient) {
+    // No sprinkles, always icing.
+    super.finish("icing");
+  }
+}
+
+Cruller().finish("adsf");

@@ -87,7 +87,7 @@ void VM::callValue(typeRuntimeValue& callee, uint8_t argCount) {
         if ((initializer = klass->methods.find(initString)) != klass->methods.end()) {
           call(initializer->second, argCount);
         } else if (argCount > 0) {
-          throwRuntimeError("Expected 0 arguments but got " + std::to_string(argCount) + " .");
+          throwRuntimeError("expected 0 arguments but got " + std::to_string(argCount) + " .");
         }
         return;
       }
@@ -104,7 +104,7 @@ void VM::callValue(typeRuntimeValue& callee, uint8_t argCount) {
                                   │ method │───────────┐
                                   └────────┘    ┼      ▼      ┼
             0──────1──────2─────────────────────3──────4──────5
-            │script│  10  │   receiver (this)   │ arg1 │ arg2 │
+            │script│  10  │   instance (this)   │ arg1 │ arg2 │
             └──────┴──────0─────────────────────1──────2──────3
                           ┼        Slot 0       ┼ 
         */
@@ -401,6 +401,31 @@ VMResult VM::run(void) {
         const auto methodName = readConstantOfType<Obj*>();
         const auto argCount = readByte();
         invoke(methodName, argCount);
+        currentFrame = &frames[frameCount - 1];  // Update frame to the latest called method.
+        break;
+      }
+      case OpCode::OP_INHERIT: {
+        Obj* superclass = nullptr;
+        if (!std::holds_alternative<Obj*>(peek(1)) || (superclass = std::get<Obj*>(peek(1)))->type != ObjType::OBJ_CLASS) {
+          throwRuntimeError("superclass must be a class.");
+        }
+        auto subclass = peekOfType<Obj*>(0);
+        for (const auto& entity : superclass->cast<ClassObj>()->methods) {  // Copy the inherited methods to subclass.
+          subclass->cast<ClassObj>()->methods[entity.first] = entity.second;
+        }
+        break;
+      }
+      case OpCode::OP_GET_SUPER: {
+        const auto methodName = readConstantOfType<Obj*>();
+        const auto superclass = std::get<Obj*>(pop())->cast<ClassObj>();
+        bindMethod(superclass, methodName);  // The instance is on the top of stack.
+        break;
+      }
+      case OpCode::OP_SUPER_INVOKE: {
+        const auto methodName = readConstantOfType<Obj*>();
+        const auto argCount = readByte();
+        const auto superclass = std::get<Obj*>(pop())->cast<ClassObj>();
+        invokeFromClass(superclass, methodName, argCount);
         currentFrame = &frames[frameCount - 1];  // Update frame to the latest called method.
         break;
       }

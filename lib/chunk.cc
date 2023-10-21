@@ -65,6 +65,7 @@ void ChunkDebugger::disassembleInstruction(const Chunk& chunk, typeVMCodeArray::
     case OpCode::OP_GET_PROPERTY: return constantInstruction("OP_GET_PROPERTY", chunk, offset);
     case OpCode::OP_SET_PROPERTY: return constantInstruction("OP_SET_PROPERTY", chunk, offset);
     case OpCode::OP_METHOD: return constantInstruction("OP_METHOD", chunk, offset);
+    case OpCode::OP_GET_SUPER: return constantInstruction("OP_GET_SUPER", chunk, offset);
     case OpCode::OP_SET_LOCAL: return byteInstruction("OP_SET_LOCAL", "index", offset);
     case OpCode::OP_GET_LOCAL: return byteInstruction("OP_GET_LOCAL", "index", offset);
     case OpCode::OP_CALL: return byteInstruction("OP_CALL", "argno", offset);
@@ -82,6 +83,7 @@ void ChunkDebugger::disassembleInstruction(const Chunk& chunk, typeVMCodeArray::
     case OpCode::OP_GREATER: return simpleInstruction("OP_GREATER", offset);
     case OpCode::OP_LESS: return simpleInstruction("OP_LESS", offset);
     case OpCode::OP_POP: return simpleInstruction("OP_POP", offset);
+    case OpCode::OP_INHERIT: return simpleInstruction("OP_INHERIT", offset);
     case OpCode::OP_JUMP: return jumpInstruction("OP_JUMP", 1, chunk, offset);
     case OpCode::OP_JUMP_IF_FALSE: return jumpInstruction("OP_JUMP_IF_FALSE", 1, chunk, offset);
     case OpCode::OP_LOOP: return jumpInstruction("OP_LOOP", -1, chunk, offset);
@@ -106,6 +108,7 @@ void ChunkDebugger::disassembleInstruction(const Chunk& chunk, typeVMCodeArray::
     case OpCode::OP_SET_UPVALUE: return byteInstruction("OP_SET_UPVALUE", "index", offset);
     case OpCode::OP_CLOSE_UPVALUE: return simpleInstruction("OP_CLOSE_UPVALUE", offset);
     case OpCode::OP_INVOKE: return invokeInstruction("OP_INVOKE", chunk, offset);
+    case OpCode::OP_SUPER_INVOKE: return invokeInstruction("OP_SUPER_INVOKE", chunk, offset);
     default: {
       std::cout << "Unknow opcode: " << +instruction << '.' << std::endl;
       offset += 1;

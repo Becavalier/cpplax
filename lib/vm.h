@@ -44,7 +44,6 @@ struct VM {
   std::vector<Obj*> grayStack = {};
   bool isStatusOk = true;
   explicit VM(std::vector<Token>& tokens, Memory* mem) : mem(mem), frameCount(0), stackTop(stack.begin()) {
-    tokens.push_back({ TokenType::THIS, "this", std::monostate {}, 0 });  // Referenced by VM local.
     // Compiling into byte codes, it returns a new "FuncObj" containing the compiled top-level code. 
     const auto function = Compiler { tokens, tokens.cbegin(), mem, &internedConstants }.compile();
     if (!Error::hadError) {

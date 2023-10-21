@@ -34,7 +34,8 @@ enum Precedence : uint8_t {  // Precedence: lowest -> highest.
 };
 
 struct ClassCompiler {
-  struct ClassCompiler* enclosing;
+  struct ClassCompiler* enclosing = nullptr;
+  bool hasSuperclass = false;
 };
 
 struct ParseRule {
@@ -68,6 +69,7 @@ struct Compiler {
   std::vector<Token>& tokens;
   Compiler* enclosing;
   static ClassCompiler* currentClass;  // Point to a struct representing the current, innermost class being compiled.
+  static std::unordered_map<std::string_view, Token> syntheticTokens;
   /**
    * Rule table for "Pratt Parser". The columns are:
    * - The function to compile a prefix expression starting with a token of that type.
@@ -107,7 +109,7 @@ struct Compiler {
     [TokenType::NIL] = { &Compiler::literal, nullptr, Precedence::PREC_NONE },
     [TokenType::OR] = { nullptr, &Compiler::or_, Precedence::PREC_OR },
     [TokenType::RETURN] = { nullptr, nullptr, Precedence::PREC_NONE },
-    [TokenType::SUPER] = { nullptr, nullptr, Precedence::PREC_NONE } ,
+    [TokenType::SUPER] = { &Compiler::super_, nullptr, Precedence::PREC_NONE } ,
     [TokenType::THIS] = { &Compiler::this_, nullptr, Precedence::PREC_NONE },
     [TokenType::TRUE] = { &Compiler::literal, nullptr, Precedence::PREC_NONE },
     [TokenType::VAR] = { nullptr, nullptr, Precedence::PREC_NONE },
@@ -134,7 +136,7 @@ struct Compiler {
       Local* local = &locals[localCount++];  // Stack slot zero is for VM’s own internal use.
       local->depth = 0;
       if (scope == FunctionScope::TYPE_METHOD || scope == FunctionScope::TYPE_INITIALIZER) {
-        local->name = &tokens.back();
+        local->name = &(syntheticTokens.find("this")->second);
         local->initialized = true;
       } else {
         local->name = nullptr;  // Empty name.
@@ -373,18 +375,11 @@ struct Compiler {
       emitBytes(getOp, varIndex);
     }
   }
-  void this_(bool) {
-    if (currentClass == nullptr) {
-      errorAtCurrent("can't use 'this' outside of a class.");
-    }
-    variable(false);  // Treat "this" as a lexically scoped local variable whose value gets initialized.
-  }
+  /**
+   * Takes the previously consumed token, treats it as a variable reference, - 
+   * and emits code to load the variable’s value onto the stack.
+  */
   void variable(bool canAssign) {
-    /**
-     * This function should look for and consume the "=" only if, - 
-     * it’s in the context of a low-precedence expression, to avoid case like below:
-     * a * b = c + d;
-    */
     namedVariable(previous(), canAssign);
   }
   void string(bool) {
@@ -685,6 +680,33 @@ struct Compiler {
     function(scope);
     emitBytes(OpCode::OP_METHOD, constant);
   }
+  void super_(bool) {
+    if (currentClass == nullptr) {
+      errorAtCurrent("can't use 'super' outside of a class.");
+    } else if (!currentClass->hasSuperclass) {
+      errorAtCurrent("can't use 'super' in a class with no superclass.");
+    }
+    consume(TokenType::DOT, "expect '.' after 'super'.");
+    consume(TokenType::IDENTIFIER, "expect superclass method name.");
+    const auto name = identifierConstant(previous());
+    // For accessing a superclass method on the current instance.
+    namedVariable(syntheticTokens.find("this")->second, false);  // Load the instance.
+    if (match(TokenType::LEFT_PAREN)) {  // Combind the "OP_GET_SUPER" and "OP_CALL".
+      const auto argCount = argumentList();
+      namedVariable(syntheticTokens.find("super")->second, false);
+      emitBytes(OpCode::OP_SUPER_INVOKE, name);
+      emitByte(argCount);
+    } else {
+      namedVariable(syntheticTokens.find("super")->second, false);
+      emitBytes(OpCode::OP_GET_SUPER, name);
+    }
+  }
+  void this_(bool) {
+    if (currentClass == nullptr) {
+      errorAtPrevious("can't use 'this' outside of a class.");
+    }
+    variable(false);  // Treat "this" as a lexically scoped local variable whose value gets initialized.
+  }
   void classDeclaration(void) {
     consume(TokenType::IDENTIFIER, "expect class name.");
     const auto& className = previous();
@@ -698,6 +720,23 @@ struct Compiler {
     classCompiler.enclosing = currentClass;
     currentClass = &classCompiler;
 
+    // Set up inheritance.
+    if (match(TokenType::LESS)) {
+      consume(TokenType::IDENTIFIER, "expect superclass name.");
+      variable(false);  // Load super class onto the stack.
+      if (className.lexeme == previous().lexeme) {
+        errorAtPrevious("a class can't inherit from itself.");
+      }
+      // Set up "super" as a local in the compiling function frame, which will be captured as upvalues by the methods.
+      beginScope();
+      addLocal(&(syntheticTokens.find("super")->second));
+      defineVariable(std::nullopt);
+
+      namedVariable(className, false);  // Load sub class (current one).
+      emitByte(OpCode::OP_INHERIT);
+      classCompiler.hasSuperclass = true;
+    }
+
     namedVariable(className, false);  // Load the class onto the stack.
     consume(TokenType::LEFT_BRACE, "expect '{' before class body.");
     while (!check(TokenType::RIGHT_BRACE) && !check(TokenType::SOURCE_EOF)) {
@@ -705,6 +744,9 @@ struct Compiler {
     }
     consume(TokenType::RIGHT_BRACE, "expect '}' after class body.");
     emitByte(OpCode::OP_POP);
+    if (classCompiler.hasSuperclass) {
+      endScope();  // Discard the “super” variable after compiling the class body.
+    }
     currentClass = currentClass->enclosing;  // Update the class compiling chain.
   }
   void declaration(void) {
