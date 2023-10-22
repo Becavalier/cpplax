@@ -1,7 +1,7 @@
 #include "./memory.h"
 #include "./object.h"
 #include "./vm.h"
-#include "./macro.h"
+#include "./common.h"
 #include "./constant.h"
 
 void Memory::free(bool leaveStr) {  // Freeing non-StringObj objects first.

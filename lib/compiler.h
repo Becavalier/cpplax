@@ -7,7 +7,7 @@
 #include <unordered_map>
 #include <cstdint>
 #include <optional>
-#include "./macro.h"
+#include "./common.h"
 #include "./chunk.h"
 #include "./token.h"
 #include "./error.h"

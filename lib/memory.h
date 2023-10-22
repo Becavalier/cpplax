@@ -6,10 +6,10 @@
 #include <cstdio>
 #include <type_traits>
 #include <unordered_map>
-#include "./macro.h"
+#include "./common.h"
 #include "./object.h"
 #include "./type.h"
-#include "./helper.h"
+#include "./helper.h" 
 
 struct VM;
 struct Compiler;

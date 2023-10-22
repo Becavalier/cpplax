@@ -12,7 +12,7 @@
 #include <vector>
 #include <unordered_map>
 #include <iostream>
-#include "./macro.h"
+#include "./common.h"
 
 using typeRuntimeNumericValue= double;
 

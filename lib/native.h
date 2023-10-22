@@ -11,7 +11,6 @@ typeRuntimeValue printNative(uint8_t argCount, typeVMStack::const_iterator args)
   for (auto i = 0; i < argCount; i++) {
     std::cout << stringifyVariantValue(*(args + i));
   }
-  std::cout << std::endl;
   return std::monostate {};
 }
 

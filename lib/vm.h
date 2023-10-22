@@ -8,7 +8,7 @@
 #include <unordered_map>
 #include <cassert>
 #include <sstream>
-#include "./macro.h"
+#include "./common.h"
 #include "./chunk.h"
 #include "./type.h"
 #include "./compiler.h"

@@ -1,4 +1,5 @@
 #include <string>
+#include "./common.h"
 #include "./vm.h"
 #include "./native.h"
 #include "./memory.h"
