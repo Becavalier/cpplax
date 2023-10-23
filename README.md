@@ -5,9 +5,19 @@ The C++ implementation for the language Lax which is a dynamically typed languag
 
 #### Build and Run
 
+Please make sure CMake (at least version 3.20) is well installed on your OS.
+
 ```
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build ./build
+```
+
+#### Test
+
+Run the below commands after the previous step. By default, the test will be running via the compiler and VM, in order to test the interpreter, please re-run the preceding CMake setup command and specify the environment variable `TEST_TARGET=INTERPRETER`.
+
+```
+ctest --test-dir ./build [-V]
 ```
 
 #### Running Lax Code

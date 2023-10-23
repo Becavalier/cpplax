@@ -94,7 +94,7 @@ void ChunkDebugger::disassembleInstruction(const Chunk& chunk, typeVMCodeArray::
       printf("%-16s %4d ", "OP_CLOSURE", constantIdx);
       printValue(constant);
       printf("\n");
-      const auto function = retrieveFuncObj(std::get<Obj*>(constant));
+      const auto function = retrieveObjFunc(std::get<Obj*>(constant));
       for (uint32_t i = 0; i < function->upvalueCount; i++) {
         auto isLocal = *offset++;
         auto index = *offset++; 

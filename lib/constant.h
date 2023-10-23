@@ -20,7 +20,7 @@ struct InternedConstants  {
     if (target != table.end()) {
       return target->second;  // Reuse the existing interned string obj.
     } else {
-      const auto heapStr = mem->makeObj<StringObj>(str);
+      const auto heapStr = mem->makeObj<ObjString>(str);
       table[str] = heapStr;
       return heapStr;  // Generate a new sting obj on the heap.
     }

@@ -1,0 +1,11 @@
+// Global variable declaration.
+var a = "before";
+print(a);   // "before".
+
+// Global assignment.
+a = "after";
+print(a);  // "after".
+
+// Expression value return.
+print(a = "arg");  // "arg".
+print(a);  // "arg". 

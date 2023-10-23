@@ -35,7 +35,9 @@ struct Lax {
     if (Error::hadError) return;
 
     if (useInterpreterMode) {
+#ifdef DEBUG_PRINT_CODE
       std::cout << "- Interpreter Mode -\n\n";
+#endif
       Parser parser { tokens };  // Parsing.
       const auto ast = parser.parse();
       if (Error::hadError) return;  
@@ -47,7 +49,9 @@ struct Lax {
 
       interpreter.interpret(ast);  // Interpret.
     } else {
+#ifdef DEBUG_PRINT_CODE
       std::cout << "- Compiler Mode -\n\n";
+#endif
       Memory memory {};
       VM vm { tokens, &memory };
       vm.interpret();

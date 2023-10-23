@@ -58,7 +58,7 @@ struct Upvalue {
 
 struct Compiler {
   Memory* mem;
-  FuncObj* compilingFunc = nullptr;
+  ObjFunc* compilingFunc = nullptr;
   FunctionScope compilingScope = FunctionScope::TYPE_TOP_LEVEL;
   InternedConstants* internedConstants;
   Upvalue upvalues[UINT8_COUNT] = {};
@@ -124,14 +124,14 @@ struct Compiler {
     FunctionScope scope = FunctionScope::TYPE_TOP_LEVEL, 
     Compiler* enclosingCompiler = nullptr) : 
     mem(memPtr),
-    compilingFunc(memPtr->makeObj<FuncObj>()),
+    compilingFunc(memPtr->makeObj<ObjFunc>()),
     compilingScope(scope),
     internedConstants(constants), 
     current(tokenIt),
     tokens(tokens),
     enclosing(enclosingCompiler) {
       if (scope != FunctionScope::TYPE_TOP_LEVEL) {
-        compilingFunc->name = internedConstants->add(previous().lexeme)->cast<StringObj>();
+        compilingFunc->name = internedConstants->add(previous().lexeme)->cast<ObjString>();
       }
       Local* local = &locals[localCount++];  // Stack slot zero is for VM’s own internal use.
       local->depth = 0;
@@ -782,7 +782,7 @@ struct Compiler {
       advance();
     }
   }
-  FuncObj* endCompiler(void) {
+  ObjFunc* endCompiler(void) {
     emitReturn();
 #ifdef DEBUG_PRINT_CODE
     ChunkDebugger::disassembleChunk(currentChunk(), compilingFunc->name != nullptr ? compilingFunc->name->str.data() : "<script>");

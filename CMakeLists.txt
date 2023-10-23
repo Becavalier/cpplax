@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.13)
+cmake_minimum_required(VERSION 3.20)
 set(PROJECT_NAME cpplax)
 project(${PROJECT_NAME} VERSION 0.1)
 
@@ -7,6 +7,7 @@ set(CMAKE_CXX_COMPILER /usr/bin/clang++)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 set(CORE_LIB_PATH lib)
+set(TEST_PATH test)
 set(EXECUTABLE_OUTPUT_PATH bin)
 
 # Handle different build types.
@@ -41,3 +42,23 @@ message(STATUS "[Info] PROJECT_SOURCE_DIR: " "${PROJECT_SOURCE_DIR}")
 
 # Set linking files.
 target_link_libraries(${PROJECT_NAME} PUBLIC cpplax-core)
+
+# Add tests.
+include(CTest)
+file(GLOB children "${TEST_PATH}/*")
+if("$ENV{TEST_TARGET}" STREQUAL "INTERPRETER")
+  set(EXTRA_TEST_ARG "-i")
+endif()
+foreach(child ${children})
+  get_filename_component(folderName "${child}" NAME)
+  if(IS_DIRECTORY ${child})
+    file(GLOB files "${child}/*.lax")
+    foreach(file ${files})
+      get_filename_component(fileName "${file}" NAME)
+      add_test(NAME "${folderName}/${fileName}" COMMAND $<TARGET_FILE:cpplax> ${EXTRA_TEST_ARG} ${file})
+    endforeach()
+  endif()
+endforeach()
+
+set_property(TEST assignment/associativity.lax PROPERTY PASS_REGULAR_EXPRESSION "ccc")
+set_property(TEST assignment/global.lax PROPERTY PASS_REGULAR_EXPRESSION "beforeafterargarg")

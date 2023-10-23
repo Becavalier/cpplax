@@ -5,11 +5,11 @@
 #include "./memory.h"
 #include "./object.h"
 
-void VM::initVM(FuncObj* function) {
+void VM::initVM(ObjFunc* function) {
   mem->setVM(this);
   initString = internedConstants.add(INITIALIZER_NAME);
-  defineNative("print", printNative, 1);
-  defineNative("clock", clockNative, 0);
+  defineNative("print", nativePrint, 1);
+  defineNative("clock", nativeClock, 0);
   push(function);  // Save the top-level function onto the stack.
   call(function, 0);  // Add a frame for the calling function.
 }
@@ -19,14 +19,14 @@ void VM::freeVM(void) {
   mem->free();
 } 
 
-void VM::defineNative(const char* name, NativeObj::typeNativeFn function, uint8_t arity) {
+void VM::defineNative(const char* name, ObjNative::typeNativeFn function, uint8_t arity) {
   const auto nativeName = internedConstants.add(name);
   globals[nativeName] = nullptr;  // For comforting GC.
-  globals[nativeName] = mem->makeObj<NativeObj>(function, arity, nativeName->cast<StringObj>());
+  globals[nativeName] = mem->makeObj<ObjNative>(function, arity, nativeName);
 }
 
-UpvalueObj* VM::captureUpvalue(typeRuntimeValue* local) {
-  UpvalueObj* prevUpvalue = nullptr;
+ObjUpvalue* VM::captureUpvalue(typeRuntimeValue* local) {
+  ObjUpvalue* prevUpvalue = nullptr;
   auto upvalue = openUpvalues;
   while (upvalue != nullptr && upvalue->location > local) {  // Searching from stack top to bottom.
     prevUpvalue = upvalue;
@@ -35,7 +35,7 @@ UpvalueObj* VM::captureUpvalue(typeRuntimeValue* local) {
   if (upvalue != nullptr && upvalue->location == local) {
     return upvalue;
   }
-  const auto createdUpvalue = mem->makeObj<UpvalueObj>(local, upvalue);
+  const auto createdUpvalue = mem->makeObj<ObjUpvalue>(local, upvalue);
   if (prevUpvalue == nullptr) {
     openUpvalues = createdUpvalue;  // Empty list.
   } else {
@@ -47,14 +47,14 @@ UpvalueObj* VM::captureUpvalue(typeRuntimeValue* local) {
 void VM::closeUpvalues(typeRuntimeValue* last) {
   while (openUpvalues != nullptr && openUpvalues->location >= last) {
     auto upvalue = openUpvalues;
-    upvalue->closed = *upvalue->location;  // Save closed upvalue onto the heap "UpvalueObj" object.
+    upvalue->closed = *upvalue->location;  // Save closed upvalue onto the heap "ObjUpvalue" object.
     upvalue->location = &upvalue->closed;
     openUpvalues = upvalue->nextValue;
   }
 }
 
 void VM::call(Obj* obj, uint8_t argCount) {
-  const auto function = retrieveFuncObj(obj);
+  const auto function = retrieveObjFunc(obj);
   if (argCount != function->arity) {
     throwRuntimeError((std::ostringstream {} << "expected " << +function->arity << " arguments but got " << +argCount << ".").str());
   }
@@ -72,9 +72,9 @@ void VM::callValue(typeRuntimeValue& callee, uint8_t argCount) {
     const auto calleeObj = std::get<Obj*>(callee);
     switch (calleeObj->type) {
       case ObjType::OBJ_NATIVE: {
-        const auto nativeFunc = calleeObj->cast<NativeObj>();;
+        const auto nativeFunc = calleeObj->cast<ObjNative>();;
         if (nativeFunc->arity != argCount) {
-          throwRuntimeError("incorrect number of arguments passed to native function '" + nativeFunc->name->str + "'.");
+          throwRuntimeError("incorrect number of arguments passed to native function '" + nativeFunc->name->cast<ObjString>()->str + "'.");
         }
         const auto result = nativeFunc->function(argCount, stackTop - argCount);
         stackTop -= argCount + 1;
@@ -82,8 +82,8 @@ void VM::callValue(typeRuntimeValue& callee, uint8_t argCount) {
         return;
       }
       case ObjType::OBJ_CLASS: {
-        const auto klass = calleeObj->cast<ClassObj>();
-        *(stackTop - argCount - 1) = mem->makeObj<InstanceObj>(klass);  // Replace the class object being called to its instance.
+        const auto klass = calleeObj->cast<ObjClass>();
+        *(stackTop - argCount - 1) = mem->makeObj<ObjInstance>(klass);  // Replace the class object being called to its instance.
         decltype(klass->methods)::iterator initializer;
         if ((initializer = klass->methods.find(initString)) != klass->methods.end()) {
           call(initializer->second, argCount);
@@ -109,7 +109,7 @@ void VM::callValue(typeRuntimeValue& callee, uint8_t argCount) {
             └──────┴──────0─────────────────────1──────2──────3
                           ┼        Slot 0       ┼ 
         */
-        const auto bound = calleeObj->cast<BoundMethodObj>();
+        const auto bound = calleeObj->cast<ObjBoundMethod>();
         *(stackTop - argCount - 1) = bound->receiver;  // Save the instance to slot 0 of the call frame.
         call(bound->method, argCount);
         return;
@@ -125,7 +125,7 @@ void VM::callValue(typeRuntimeValue& callee, uint8_t argCount) {
 
 void VM::defineMethod(Obj* name) {
   const auto method = peekOfType<Obj*>();
-  auto klass = peekOfType<Obj*>(1)->cast<ClassObj>();
+  auto klass = peekOfType<Obj*>(1)->cast<ObjClass>();
   klass->methods[name] = method;
   pop();  // Pop the method function (or closure).
 }
@@ -133,20 +133,20 @@ void VM::defineMethod(Obj* name) {
 /**
  * Bind calling method to its class instance.
 */
-void VM::bindMethod(ClassObj* klass, Obj* name) {
+void VM::bindMethod(ObjClass* klass, Obj* name) {
   const auto& method =klass->methods.find(name);
   if (method == klass->methods.end()) {
-    throwRuntimeError("undefined property '" + name->cast<StringObj>()->str + "'.");
+    throwRuntimeError("undefined property '" + name->cast<ObjString>()->str + "'.");
   }
-  auto bound = mem->makeObj<BoundMethodObj>(peek(0), method->second);
+  auto bound = mem->makeObj<ObjBoundMethod>(peek(0), method->second);
   pop();
   push(bound);  // Save the decorated method onto the stack.
 }
 
-void VM::invokeFromClass(ClassObj* klass, Obj* name, uint8_t argCount) {
+void VM::invokeFromClass(ObjClass* klass, Obj* name, uint8_t argCount) {
   const auto& method =klass->methods.find(name); 
   if (method == klass->methods.end()) {
-    throwRuntimeError("undefined property '" + name->cast<StringObj>()->str + "'.");
+    throwRuntimeError("undefined property '" + name->cast<ObjString>()->str + "'.");
   }
   call(method->second, argCount);
 }
@@ -167,7 +167,7 @@ void VM::invoke(Obj* name, uint8_t argCount) {
     || (receiverObj = std::get<Obj*>(peek(argCount)))->type != ObjType::OBJ_INSTANCE) {
     throwRuntimeError("only instances have methods.");
   }
-  auto instance = receiverObj->cast<InstanceObj>();
+  auto instance = receiverObj->cast<ObjInstance>();
   // Field access gose first.
   const auto valIt = instance->fields.find(name);
   if (valIt != instance->fields.end()) {
@@ -196,7 +196,7 @@ VMResult VM::run(void) {
     }
     printf("<-\n");
     auto currentIp = currentFrame->ip;
-    ChunkDebugger::disassembleInstruction(retrieveFuncObj(currentFrame->frameEntity)->chunk, currentIp);
+    ChunkDebugger::disassembleInstruction(retrieveObjFunc(currentFrame->frameEntity)->chunk, currentIp);
 #endif
     const auto instruction = readByte();
     switch (instruction) {
@@ -208,7 +208,7 @@ VMResult VM::run(void) {
           const auto heapX = std::get<Obj*>(x);
           const auto heapY = std::get<Obj*>(y);
           if (heapX->type == ObjType::OBJ_STRING && heapY->type == ObjType::OBJ_STRING) {
-            push(internedConstants.add(heapX->cast<StringObj>()->str + heapY->cast<StringObj>()->str));
+            push(internedConstants.add(heapX->cast<ObjString>()->str + heapY->cast<ObjString>()->str));
             break;
           }
         } else {
@@ -283,7 +283,7 @@ VMResult VM::run(void) {
         const auto name = readConstantOfType<Obj*>();
         const auto value = globals.find(name);
         if (value == globals.end()) {
-          throwRuntimeError("undefined variable '" + name->cast<StringObj>()->str + "'.");
+          throwRuntimeError("undefined variable '" + name->cast<ObjString>()->str + "'.");
         }
         push(value->second);
         break;
@@ -291,7 +291,7 @@ VMResult VM::run(void) {
       case OpCode::OP_SET_GLOBAL: {
         const auto name = readConstantOfType<Obj*>();
          if (!globals.contains(name)) {
-          throwRuntimeError("undefined variable '" + name->cast<StringObj>()->str + "'.");
+          throwRuntimeError("undefined variable '" + name->cast<ObjString>()->str + "'.");
          }
         globals[name] = peek(0);  // Assignment expression doesn’t pop the value off the stack.
         break;
@@ -333,16 +333,16 @@ VMResult VM::run(void) {
       }
       case OpCode::OP_GET_UPVALUE: {
         const auto slot = readByte();
-        push(*currentFrame->frameEntity->cast<ClosureObj>()->upvalues[slot]->location);
+        push(*currentFrame->frameEntity->cast<ObjClosure>()->upvalues[slot]->location);
         break;
       }
       case OpCode::OP_SET_UPVALUE: {
         const auto slot = readByte();
-        *currentFrame->frameEntity->cast<ClosureObj>()->upvalues[slot]->location = peek(0);
+        *currentFrame->frameEntity->cast<ObjClosure>()->upvalues[slot]->location = peek(0);
         break;
       }
       case OpCode::OP_CLOSURE: {
-        auto closure = mem->makeObj<ClosureObj>(retrieveFuncObj(readConstantOfType<Obj*>()));
+        auto closure = mem->makeObj<ObjClosure>(retrieveObjFunc(readConstantOfType<Obj*>()));
         push(closure);
         for (uint32_t i = 0; i < closure->upvalueCount; i++) {
           uint8_t isLocal = readByte();
@@ -350,7 +350,7 @@ VMResult VM::run(void) {
           if (isLocal == 1) {
             closure->upvalues[i] = captureUpvalue(&*(currentFrame->slots + index));
           } else {
-            closure->upvalues[i] = currentFrame->frameEntity->cast<ClosureObj>()->upvalues[index];
+            closure->upvalues[i] = currentFrame->frameEntity->cast<ObjClosure>()->upvalues[index];
           }
         }
         break;
@@ -362,7 +362,7 @@ VMResult VM::run(void) {
       }
       case OpCode::OP_CLASS: {
         const auto name = readConstantOfType<Obj*>();
-        push(mem->makeObj<ClassObj>(name->cast<StringObj>()));
+        push(mem->makeObj<ObjClass>(name->cast<ObjString>()));
         break;
       }
       case OpCode::OP_GET_PROPERTY: {
@@ -370,7 +370,7 @@ VMResult VM::run(void) {
         if (!std::holds_alternative<Obj*>(peek()) || (obj = std::get<Obj*>(peek()))->type != ObjType::OBJ_INSTANCE) {
           throwRuntimeError("only instances have properties.");
         }
-        auto instance = obj->cast<InstanceObj>();
+        auto instance = obj->cast<ObjInstance>();
         const auto name = readConstantOfType<Obj*>();
         const auto valIt = instance->fields.find(name);
         if (valIt != instance->fields.end()) {
@@ -386,7 +386,7 @@ VMResult VM::run(void) {
         if (!std::holds_alternative<Obj*>(peek(1)) || (obj = std::get<Obj*>(peek(1)))->type != ObjType::OBJ_INSTANCE) {
           throwRuntimeError("only instances have properties.");
         }
-        auto instance = obj->cast<InstanceObj>();
+        auto instance = obj->cast<ObjInstance>();
         const auto name = readConstantOfType<Obj*>();
         instance->fields[name] = peek(0);
         const auto value = pop();
@@ -411,21 +411,21 @@ VMResult VM::run(void) {
           throwRuntimeError("superclass must be a class.");
         }
         auto subclass = peekOfType<Obj*>(0);
-        for (const auto& entity : superclass->cast<ClassObj>()->methods) {  // Copy the inherited methods to subclass.
-          subclass->cast<ClassObj>()->methods[entity.first] = entity.second;
+        for (const auto& entity : superclass->cast<ObjClass>()->methods) {  // Copy the inherited methods to subclass.
+          subclass->cast<ObjClass>()->methods[entity.first] = entity.second;
         }
         break;
       }
       case OpCode::OP_GET_SUPER: {
         const auto methodName = readConstantOfType<Obj*>();
-        const auto superclass = std::get<Obj*>(pop())->cast<ClassObj>();
+        const auto superclass = std::get<Obj*>(pop())->cast<ObjClass>();
         bindMethod(superclass, methodName);  // The instance is on the top of stack.
         break;
       }
       case OpCode::OP_SUPER_INVOKE: {
         const auto methodName = readConstantOfType<Obj*>();
         const auto argCount = readByte();
-        const auto superclass = std::get<Obj*>(pop())->cast<ClassObj>();
+        const auto superclass = std::get<Obj*>(pop())->cast<ObjClass>();
         invokeFromClass(superclass, methodName, argCount);
         currentFrame = &frames[frameCount - 1];  // Update frame to the latest called method.
         break;
@@ -438,7 +438,7 @@ VMResult VM::run(void) {
 void VM::stackTrace(void) {
   for (auto i = frameCount; i >= 1; i--) {
     auto frame = &frames[i - 1];
-    auto function = retrieveFuncObj(frame->frameEntity);
+    auto function = retrieveObjFunc(frame->frameEntity);
     auto instruction = frame->ip - function->chunk.code.cbegin() - 1;
     fprintf(stderr, "[Line %zu] in ", function->chunk.getLine(instruction));
     if (function->name == NULL) {

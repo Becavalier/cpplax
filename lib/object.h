@@ -29,119 +29,119 @@ struct Obj {
   virtual ~Obj() {};
 };
 
-struct StringObj : public Obj {
+struct ObjString : public Obj {
   std::string str;
-  StringObj(Obj** next, std::string_view str) : Obj(ObjType::OBJ_STRING, *next), str(str) {
+  ObjString(Obj** next, std::string_view str) : Obj(ObjType::OBJ_STRING, *next), str(str) {
     *next = this;
   }
-  ~StringObj() {}
+  ~ObjString() {}
 };
 
 // The “raw” compile-time state of a function declaration.
-struct FuncObj : public Obj {
+struct ObjFunc : public Obj {
   uint8_t arity;
   uint32_t upvalueCount;
   Chunk chunk;
-  StringObj* name;
-  explicit FuncObj(Obj** next) : Obj(ObjType::OBJ_FUNCTION, *next), arity(0), upvalueCount(0), name(nullptr) {
+  ObjString* name;
+  explicit ObjFunc(Obj** next) : Obj(ObjType::OBJ_FUNCTION, *next), arity(0), upvalueCount(0), name(nullptr) {
     *next = this;
   }
-  ~FuncObj() {}
+  ~ObjFunc() {}
 };
 
-struct UpvalueObj : public Obj {
+struct ObjUpvalue : public Obj {
   typeRuntimeValue* location;  // Pointing to the value on the stack.
   typeRuntimeValue closed = std::monostate {};
-  UpvalueObj* nextValue;
-  UpvalueObj(
+  ObjUpvalue* nextValue;
+  ObjUpvalue(
     Obj** next, 
     typeRuntimeValue* location, 
-    UpvalueObj* nextValue = nullptr) : 
+    ObjUpvalue* nextValue = nullptr) : 
     Obj(ObjType::OBJ_UPVALUE, *next), 
     location(location), 
     nextValue(nextValue) {
       *next = this;
     }
-  ~UpvalueObj() {}
+  ~ObjUpvalue() {}
 }; 
 
-// The wrapper of "FuncObj" which includes runtime state for the variables the function closes over.
-struct ClosureObj : public Obj {
-  FuncObj* function;
-  std::vector<UpvalueObj*> upvalues;  // Each closure has an array of upvalues.
+// The wrapper of "ObjFunc" which includes runtime state for the variables the function closes over.
+struct ObjClosure : public Obj {
+  ObjFunc* function;
+  std::vector<ObjUpvalue*> upvalues;  // Each closure has an array of upvalues.
   uint32_t upvalueCount;
-  explicit ClosureObj(Obj** next, FuncObj* functionObj) : 
+  explicit ObjClosure(Obj** next, ObjFunc* functionObj) : 
     Obj(ObjType::OBJ_CLOSURE, *next), 
     function(functionObj), 
     upvalues(function->upvalueCount, nullptr), 
     upvalueCount(function->upvalueCount) {
       *next = this;
     }
-  ~ClosureObj() {}
+  ~ObjClosure() {}
 };
 
-struct NativeObj : public Obj {
+struct ObjNative : public Obj {
   using typeNativeFn = typeRuntimeValue (*)(uint8_t, typeVMStack::const_iterator);
   uint8_t arity;
   typeNativeFn function;
-  StringObj* name;
-  NativeObj(
+  Obj* name;
+  ObjNative(
     Obj** next,
     typeNativeFn function,
     uint8_t arity, 
-    StringObj* name) : 
+    Obj* name) : 
     Obj(ObjType::OBJ_NATIVE, *next),
     arity(arity), 
     function(function), 
     name(name) {
       *next = this;
     }
-  ~NativeObj() {}
+  ~ObjNative() {}
 };
 
-struct ClassObj : public Obj {
-  StringObj* name;
+struct ObjClass : public Obj {
+  Obj* name;
   typeVMStore<Obj*> methods;
-  ClassObj(Obj** next, StringObj* name) : Obj(ObjType::OBJ_CLASS, *next), name(name) {
+  ObjClass(Obj** next, Obj* name) : Obj(ObjType::OBJ_CLASS, *next), name(name) {
     *next = this;
   }
-  ~ClassObj() {}
+  ~ObjClass() {}
 };
 
-struct InstanceObj : public Obj {
-  ClassObj* klass;
+struct ObjInstance : public Obj {
+  ObjClass* klass;
   typeVMStore<> fields = {};
-  InstanceObj(Obj** next, ClassObj* klass) : Obj(ObjType::OBJ_INSTANCE, *next), klass(klass) {
+  ObjInstance(Obj** next, ObjClass* klass) : Obj(ObjType::OBJ_INSTANCE, *next), klass(klass) {
     *next = this;
   }
-  ~InstanceObj() {}
+  ~ObjInstance() {}
 };
 
-struct BoundMethodObj : public Obj {
-  typeRuntimeValue receiver;   // "InstanceObj*".
+struct ObjBoundMethod : public Obj {
+  typeRuntimeValue receiver;   // "ObjInstance*".
   Obj* method;
-  BoundMethodObj(Obj** next, typeRuntimeValue& receiver, Obj* method) : Obj(ObjType::OBJ_BOUND_METHOD, *next), receiver(receiver), method(method) {
+  ObjBoundMethod(Obj** next, typeRuntimeValue& receiver, Obj* method) : Obj(ObjType::OBJ_BOUND_METHOD, *next), receiver(receiver), method(method) {
     *next = this;
   }
-  ~BoundMethodObj() {}
+  ~ObjBoundMethod() {}
 };  
 
 // Helper functions.
-inline auto retrieveFuncObj(Obj* obj) { 
-  return obj->type == ObjType::OBJ_FUNCTION ? static_cast<FuncObj*>(obj) : obj->cast<ClosureObj>()->function;  // Falling through to "ClosureObj".
+inline auto retrieveObjFunc(Obj* obj) { 
+  return obj->type == ObjType::OBJ_FUNCTION ? static_cast<ObjFunc*>(obj) : obj->cast<ObjClosure>()->function;  // Falling through to "ObjClosure".
 }
 
 template<typename T>
 const char* Obj::printObjNameByType(void) {
   using K = std::remove_cv_t<T>;
-  if constexpr (std::is_same_v<K, FuncObj>) return "FuncObj";
-  else if constexpr (std::is_same_v<K, NativeObj>) return "NativeObj";
-  else if constexpr (std::is_same_v<K, ClosureObj>) return "ClosureObj";
-  else if constexpr (std::is_same_v<K, StringObj>) return "StringObj";
-  else if constexpr (std::is_same_v<K, UpvalueObj>) return "UpvalueObj";
-  else if constexpr (std::is_same_v<K, ClassObj>) return "ClassObj";
-  else if constexpr (std::is_same_v<K, InstanceObj>) return "InstanceObj";
-  else if constexpr (std::is_same_v<K, BoundMethodObj>) return "BoundMethodObj";
+  if constexpr (std::is_same_v<K, ObjFunc>) return "ObjFunc";
+  else if constexpr (std::is_same_v<K, ObjNative>) return "ObjNative";
+  else if constexpr (std::is_same_v<K, ObjClosure>) return "ObjClosure";
+  else if constexpr (std::is_same_v<K, ObjString>) return "ObjString";
+  else if constexpr (std::is_same_v<K, ObjUpvalue>) return "ObjUpvalue";
+  else if constexpr (std::is_same_v<K, ObjClass>) return "ObjClass";
+  else if constexpr (std::is_same_v<K, ObjInstance>) return "ObjInstance";
+  else if constexpr (std::is_same_v<K, ObjBoundMethod>) return "ObjBoundMethod";
   return "Unknown Type";
 }
 

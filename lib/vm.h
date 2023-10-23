@@ -38,13 +38,13 @@ struct VM {
   InternedConstants internedConstants { mem };
   typeVMStore<> globals;
   CallFrame* currentFrame;
-  UpvalueObj* openUpvalues = nullptr;
+  ObjUpvalue* openUpvalues = nullptr;
   Obj* initString = nullptr;
   // For GC.
   std::vector<Obj*> grayStack = {};
   bool isStatusOk = true;
   explicit VM(std::vector<Token>& tokens, Memory* mem) : mem(mem), frameCount(0), stackTop(stack.begin()) {
-    // Compiling into byte codes, it returns a new "FuncObj" containing the compiled top-level code. 
+    // Compiling into byte codes, it returns a new "ObjFunc" containing the compiled top-level code. 
     const auto function = Compiler { tokens, tokens.cbegin(), mem, &internedConstants }.compile();
     if (!Error::hadError) {
       tokens.clear();
@@ -55,9 +55,9 @@ struct VM {
   }
   VM(const VM&) = delete;
   VM(const VM&&) = delete;
-  void initVM(FuncObj*);
+  void initVM(ObjFunc*);
   size_t currentLine(void) {
-    return retrieveFuncObj(currentFrame->frameEntity)->chunk.getLine(currentFrame->ip - 1);
+    return retrieveObjFunc(currentFrame->frameEntity)->chunk.getLine(currentFrame->ip - 1);
   }
   auto top(void) const {
     return stackTop - 1;
@@ -105,7 +105,7 @@ struct VM {
     return static_cast<uint16_t>(*(currentFrame->ip - 2) << 8 | *(currentFrame->ip - 1));
   }
   auto& readConstant(void) {
-    return retrieveFuncObj(currentFrame->frameEntity)->chunk.constants[readByte()];
+    return retrieveObjFunc(currentFrame->frameEntity)->chunk.constants[readByte()];
   }
   template<typename T>
   T& readConstantOfType(void) {
@@ -113,16 +113,16 @@ struct VM {
   }
   void call(Obj*, uint8_t);
   void callValue(typeRuntimeValue&, uint8_t);
-  void defineNative(const char*, NativeObj::typeNativeFn, uint8_t);
-  UpvalueObj* captureUpvalue(typeRuntimeValue*);
+  void defineNative(const char*, ObjNative::typeNativeFn, uint8_t);
+  ObjUpvalue* captureUpvalue(typeRuntimeValue*);
   void closeUpvalues(typeRuntimeValue*);
   VMResult run(void);
   void stackTrace(void);
   void freeVM(void);
   VMResult interpret(void);
   void defineMethod(Obj*);
-  void bindMethod(ClassObj*, Obj*);
-  void invokeFromClass(ClassObj*, Obj*, uint8_t);
+  void bindMethod(ObjClass*, Obj*);
+  void invokeFromClass(ObjClass*, Obj*, uint8_t);
   void invoke(Obj*, uint8_t);
 };
 

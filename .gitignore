@@ -9,3 +9,4 @@ Makefile
 bin/
 .vscode/
 lib/common.h
+/Testing/

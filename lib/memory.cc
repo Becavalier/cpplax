@@ -4,7 +4,7 @@
 #include "./common.h"
 #include "./constant.h"
 
-void Memory::free(bool leaveStr) {  // Freeing non-StringObj objects first.
+void Memory::free(bool leaveStr) {  // Freeing non-ObjString objects first.
   auto obj = objs;
   Obj* prev = nullptr;
   while (obj != nullptr) {
@@ -71,7 +71,7 @@ void Memory::markRoots(void) {
     markValue(*slot);
   }
   for (size_t i = 0; i < vm->frameCount; i++) {
-    markObject(vm->frames[i].frameEntity);  // Mark "ClosureObj" or "FuncObj".
+    markObject(vm->frames[i].frameEntity);  // Mark "ObjClosure" or "FuncObj".
   }
   for (Obj* upvalue = vm->openUpvalues; upvalue != nullptr; upvalue = upvalue->next) {
     markObject(upvalue);
@@ -93,17 +93,17 @@ void Memory::blackenObject(Obj* obj) {
     case ObjType::OBJ_STRING:
       break;
     case ObjType::OBJ_UPVALUE: {  
-      markValue(obj->cast<UpvalueObj>()->closed);
+      markValue(obj->cast<ObjUpvalue>()->closed);
       break;
     }
     case ObjType::OBJ_FUNCTION: {
-      auto function = retrieveFuncObj(obj);
+      auto function = retrieveObjFunc(obj);
       markObject(function->name);
       markArray(function->chunk.constants);
       break;
     }
     case ObjType::OBJ_CLOSURE: {
-      auto closure = obj->cast<ClosureObj>();
+      auto closure = obj->cast<ObjClosure>();
       markObject(closure->function);
       for (const auto& uvObj : closure->upvalues) {
         markObject(uvObj);
@@ -111,19 +111,19 @@ void Memory::blackenObject(Obj* obj) {
       break;
     }
     case ObjType::OBJ_CLASS: {
-      auto klass = obj->cast<ClassObj>();
+      auto klass = obj->cast<ObjClass>();
       markObject(klass->name);
       markTable(klass->methods);
       break;
     }
     case ObjType::OBJ_INSTANCE: {
-      auto instance = obj->cast<InstanceObj>();
+      auto instance = obj->cast<ObjInstance>();
       markObject(instance->klass);
       markTable(instance->fields);
       break;
     }
     case ObjType::OBJ_BOUND_METHOD: {
-      auto bound = obj->cast<BoundMethodObj>();
+      auto bound = obj->cast<ObjBoundMethod>();
       markValue(bound->receiver);
       markObject(bound->method);
       break;

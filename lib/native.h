@@ -7,14 +7,14 @@
 #include "./type.h"
 #include "./helper.h"
 
-typeRuntimeValue printNative(uint8_t argCount, typeVMStack::const_iterator args) {
+typeRuntimeValue nativePrint(uint8_t argCount, typeVMStack::const_iterator args) {
   for (auto i = 0; i < argCount; i++) {
     std::cout << stringifyVariantValue(*(args + i));
   }
   return std::monostate {};
 }
 
-typeRuntimeValue clockNative(uint8_t, typeVMStack::const_iterator) {
+typeRuntimeValue nativeClock(uint8_t, typeVMStack::const_iterator) {
   return static_cast<double>(clock()) / CLOCKS_PER_SEC;
 }
 
