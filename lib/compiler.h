@@ -599,7 +599,7 @@ struct Compiler {
       emitReturn();
     } else {
       if (compilingScope == FunctionScope::TYPE_INITIALIZER) {
-        errorAtCurrent("can't return a value from an initializer.");
+        errorAtPrevious("can't return a value from an initializer.");
       }
       expression();
       consume(TokenType::SEMICOLON, "expect ';' after return value.");

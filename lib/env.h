@@ -8,9 +8,8 @@
 #include "./token.h"
 #include "./error.h"
 
-class Env : public std::enable_shared_from_this<Env> {
+struct Env : public std::enable_shared_from_this<Env> {
   std::unordered_map<std::string_view, typeRuntimeValue> values;
- public: 
   std::shared_ptr<Env> enclosing;
   Env(void) : enclosing(nullptr) {};  // For the global scope’s environment.
   explicit Env(std::shared_ptr<Env> enclosing) : enclosing(enclosing) {};

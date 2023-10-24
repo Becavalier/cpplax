@@ -88,7 +88,7 @@ void VM::callValue(typeRuntimeValue& callee, uint8_t argCount) {
         if ((initializer = klass->methods.find(initString)) != klass->methods.end()) {
           call(initializer->second, argCount);
         } else if (argCount > 0) {
-          throwRuntimeError("expected 0 arguments but got " + std::to_string(argCount) + " .");
+          throwRuntimeError("expected 0 arguments but got " + std::to_string(argCount) + ".");
         }
         return;
       }

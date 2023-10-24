@@ -41,7 +41,7 @@ struct Error {
     hadError = true;
   }
   static void error(const Token& token, const std::string_view msg) {
-    report(token.line, token.type == TokenType::SOURCE_EOF ? "end" : "'" + std::string { token.lexeme } + "'", msg);
+    report(token.line, token.type == TokenType::SOURCE_EOF ? "end" : std::string { token.lexeme }, msg);
   }
   static void error(size_t line, const std::string_view msg) {
     report(line, "", msg);

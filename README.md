@@ -17,7 +17,7 @@ cmake --build ./build
 Run the below commands after the previous step. By default, the test will be running via the compiler and VM, in order to test the interpreter, please re-run the preceding CMake setup command and specify the environment variable `TEST_TARGET=INTERPRETER`.
 
 ```
-ctest --test-dir ./build [-V]
+ctest --test-dir ./build
 ```
 
 #### Running Lax Code

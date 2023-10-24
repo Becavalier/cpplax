@@ -15,6 +15,7 @@
 #include <ctime>
 #include <unordered_map>
 #include <variant>
+#include <optional>
 #include "./expr.h"
 #include "./helper.h"
 #include "./error.h"
@@ -24,107 +25,10 @@
 #include "./type.h"
 #include "./common.h"
 
-// Forward declarations.
-struct Interpreter;
-struct ClassInstance;
-
-/**
- * Class "Function".
-*/
-struct Function : public Invokable {
-  Function(std::shared_ptr<const FunctionStmt> declaration, std::shared_ptr<Env> closure, bool isInitializer) : declaration(declaration), closure(closure), isInitializer(isInitializer) {}
-  std::string toString(void) override { 
-    return "<fn " + std::string { declaration->name.lexeme } +  ">"; 
-  }
-  size_t arity() override { 
-    return declaration->parames.size(); 
-  }
-  typeRuntimeValue invoke(Interpreter*, std::vector<typeRuntimeValue>&) override;
-  std::shared_ptr<Function> bind(std::shared_ptr<ClassInstance> instance) {
-    auto env = std::make_shared<Env>(closure);  // Create a new environment nestled inside the method’s original closure.
-    env->define("this", instance);
-    return std::make_shared<Function>(declaration, env, isInitializer);
-  }
- private:
-  const std::shared_ptr<const FunctionStmt> declaration;
-  std::shared_ptr<Env> closure;  // Capture the env at the definition place.
-  bool isInitializer;
-};
-
-/**
- * Class "Class".
- * 
- * Class() -> 
- * ClassInstance -> 
- * (GetExpr / SetExpr) -> method / field.
-*/
-struct Class : public Invokable, public std::enable_shared_from_this<Class> {
-  explicit Class(
-    const std::string_view name, 
-    std::shared_ptr<Class> superClass,
-    std::unordered_map<std::string_view, std::shared_ptr<Function>>& methods) 
-    : name(name), superClass(superClass), methods(methods) {
-      initializer = findMethod(INITIALIZER_NAME);
-    }
-  std::string toString(void) override { 
-    return "<class " + std::string { name } + ">"; 
-  }
-  size_t arity() override {
-    return initializer == nullptr ? 0 : initializer->arity();
-  }
-  typeRuntimeValue invoke(Interpreter* interpreter, std::vector<typeRuntimeValue>& arguments) override {
-    auto instance = std::make_shared<ClassInstance>(shared_from_this());  // Return a new instance.
-    if (initializer != nullptr) {
-      initializer->bind(instance)->invoke(interpreter, arguments);  // Invoke the constructor.
-    }
-    return instance;
-  }
-  std::shared_ptr<Function> findMethod(const std::string_view name) {
-    if (methods.contains(name)) {
-      return methods[name];
-    }
-    if (superClass != nullptr) {
-      return superClass->findMethod(name);  // Look up from the inherited class.
-    }
-    return nullptr;
-  }
- private:
-  const std::string_view name;
-  std::shared_ptr<Class> superClass;
-  std::shared_ptr<Function> initializer;
-  std::unordered_map<std::string_view, std::shared_ptr<Function>> methods;
-};
-
-
-/**
- * Class "ClassInstance".
- * The runtime representation of the Class instance.
-*/
-struct ClassInstance : public std::enable_shared_from_this<ClassInstance> {
-  explicit ClassInstance(std::shared_ptr<Class> thisClass) : thisClass(thisClass) {}
-  typeRuntimeValue get(const Token& name) {  
-    if (fields.contains(name.lexeme)) {
-      return fields[name.lexeme];  // Access fields in an instance.
-    }
-    const auto& method = thisClass->findMethod(name.lexeme);  // Otherwise, access class method (fields shadow methods).
-    if (method != nullptr) {
-      return method->bind(shared_from_this());  // Change method's closure and bind it to new scope.
-    }
-    throw TokenError { name, "undefined property '" + std::string { name.lexeme } + "'." };
-  }
-  void set(const Token& name, typeRuntimeValue value) {
-    fields[name.lexeme] = value;
-  }
- private:
-  std::shared_ptr<Class> thisClass;
-  std::unordered_map<std::string_view, typeRuntimeValue> fields;  // Runtime state of each instance.
-};
-
 struct ReturnException : public std::exception {
   const typeRuntimeValue value;
   explicit ReturnException(const typeRuntimeValue& value) : value(value) {}
 };
-
 
 /**
  * Class "Interpreter".
@@ -243,14 +147,17 @@ struct Interpreter : public ExprVisitor, public StmtVisitor {
     return evaluate(expr->right);
   }
   typeRuntimeValue visitBinaryExpr(std::shared_ptr<const BinaryExpr> expr) override {
+    #define RET_NUM_BINARY_OP(token, op, left, right) \
+      checkNumberOperands(token, left, right); \
+      return std::get<typeRuntimeNumericValue>(left) op std::get<typeRuntimeNumericValue>(right);
     /**
      * Another semantic choice: 
      * We could have instead specified that the left operand is checked, -
      * before even evaluating the right.
     */
     // Evaluate the operands in "left-to-right" order.
-    auto left = evaluate(expr->left);
-    auto right = evaluate(expr->right);
+    const auto left = evaluate(expr->left);
+    const auto right = evaluate(expr->right);
     switch (expr->op.type) {
       case TokenType::BANG_EQUAL: {
         return left != right;
@@ -259,55 +166,65 @@ struct Interpreter : public ExprVisitor, public StmtVisitor {
         return left == right;
       }
       case TokenType::GREATER: {
-        checkNumberOperands(expr->op, left, right);
-        return std::get<double>(left) > std::get<double>(right);
+        RET_NUM_BINARY_OP(expr->op, >, left, right)
       }
       case TokenType::GREATER_EQUAL: {
-        checkNumberOperands(expr->op, left, right);
-        return std::get<double>(left) >= std::get<double>(right);
+        RET_NUM_BINARY_OP(expr->op, >=, left, right)
       }
       case TokenType::LESS: {
-        checkNumberOperands(expr->op, left, right);
-        return std::get<double>(left) < std::get<double>(right);
+        RET_NUM_BINARY_OP(expr->op, <, left, right)
       }
       case TokenType::LESS_EQUAL: {
-        checkNumberOperands(expr->op, left, right);
-        return std::get<double>(left) <= std::get<double>(right);
+        RET_NUM_BINARY_OP(expr->op, <=, left, right)
       }
       case TokenType::MINUS: {
-        checkNumberOperands(expr->op, left, right);
-        return std::get<double>(left) - std::get<double>(right);
-      }
+        RET_NUM_BINARY_OP(expr->op, -, left, right)
+      } 
       case TokenType::PLUS: {
-        if (std::holds_alternative<double>(left)) {
-          if (std::holds_alternative<double>(right)) {
-            return std::get<double>(left) + std::get<double>(right);
+        const auto str = std::visit([](auto&& argLeft, auto&& argRight) -> std::optional<typeRuntimeValue> {
+          using T = std::decay_t<decltype(argLeft)>;
+          using K = std::decay_t<decltype(argRight)>;
+          if constexpr (std::is_same_v<T, typeRuntimeNumericValue>) {
+            if constexpr (std::is_same_v<K, typeRuntimeNumericValue>) {
+              return argLeft + argRight;
+            } else if constexpr (std::is_same_v<K, std::string_view>) {
+              return std::to_string(argLeft) + std::string { argRight };
+            } else if constexpr (std::is_same_v<K, std::string>) {
+              return std::to_string(argLeft) + argRight;
+            }
+          } else if constexpr (std::is_same_v<T, std::string_view>) {
+            const auto argLeftStr = std::string { argLeft };
+            if constexpr (std::is_same_v<K, typeRuntimeNumericValue>) {
+              return argLeftStr + std::to_string(argRight);
+            } else if constexpr (std::is_same_v<K, std::string_view>) {
+              return argLeftStr + std::string { argRight };
+            } else if constexpr (std::is_same_v<K, std::string>) {
+              return argLeftStr + argRight;
+            }
+          } else if constexpr (std::is_same_v<T, std::string>) {
+            if constexpr (std::is_same_v<K, typeRuntimeNumericValue>) {
+              return argLeft + std::to_string(argRight);
+            } else if constexpr (std::is_same_v<K, std::string_view>) {
+              return argLeft + std::string { argRight };
+            } else if constexpr (std::is_same_v<K, std::string>) {
+              return argLeft + argRight;
+            }
           }
-          if (std::holds_alternative<std::string_view>(right)) {
-            return (std::ostringstream {} << std::get<double>(left) << std::get<std::string_view>(right)).str();
-          }
-        }
-        if (std::holds_alternative<std::string_view>(left)) {
-          if (std::holds_alternative<double>(right)) {
-            return (std::ostringstream {} << std::get<std::string_view>(left) << std::get<double>(right)).str();
-          }
-          if (std::holds_alternative<std::string_view>(right)) {
-            return (std::ostringstream {} << std::get<std::string_view>(left) << std::get<std::string_view>(right)).str();
-          }
-        }
-        throw TokenError { expr->op, "operand must be type of number or string." };
+          return std::nullopt;
+        }, left, right);
+        if (!str.has_value()) throw TokenError { expr->op, "operand must be type of number or string." };
+        return str.value();
       }
       case TokenType::SLASH: {
-        checkNumberOperands(expr->op, left, right);
-        return std::get<double>(left) / std::get<double>(right);
+        RET_NUM_BINARY_OP(expr->op, /, left, right)
       }
       case TokenType::STAR: {
-        checkNumberOperands(expr->op, left, right);
-        return std::get<double>(left) * std::get<double>(right);
+        RET_NUM_BINARY_OP(expr->op, *, left, right)
       }
       default:;
     }
     return std::monostate {};
+    #undef NUM_BINARY_OP
   }
   typeRuntimeValue visitCallExpr(std::shared_ptr<const CallExpr> expr) override {
     auto callee = evaluate(expr->callee);  // "primary" -> TokenType::IDENTIFIER -> VariableExpr -> Env.get.
@@ -376,7 +293,7 @@ struct Interpreter : public ExprVisitor, public StmtVisitor {
       execute(stmt->body);
     }
   }
-  void visitFunctionStmt(std::shared_ptr<const FunctionStmt> stmt) override {
+  void visitFunctionStmt(std::shared_ptr<const FunctionStmt> stmt) override { 
     std::shared_ptr<Invokable> invoker = std::make_shared<Function>(stmt, env, false);  // Save closure (the definition scope) as well.
     env->define(stmt->name.lexeme, invoker); 
   };
@@ -400,7 +317,7 @@ struct Interpreter : public ExprVisitor, public StmtVisitor {
           throw TokenError { stmt->superClass->name, invalidSuperErrorMsg };
         }
       }
-    }
+    } 
     env->define(stmt->name.lexeme, std::monostate {});
     if (superClass != nullptr) {
       env = std::make_shared<Env>(env);
@@ -433,26 +350,5 @@ struct Interpreter : public ExprVisitor, public StmtVisitor {
     }
   }
 };
-
-// Post definitions.
-typeRuntimeValue Function::invoke(Interpreter* interpreter, std::vector<typeRuntimeValue>& arguments) {
-  /**
-   * env (created when invoked) -> 
-   * closure (created when visiting function stmt, saved as an Invokable) -> 
-   * global.
-  */
-  auto env = std::make_shared<Env>(closure);  // Each function gets its own environment where it stores those variables.
-  for (size_t i = 0; i < declaration->parames.size(); i++) {
-    env->define(declaration->parames.at(i).get().lexeme, arguments.at(i));  // Save the passing arguments into the env.
-  }
-  try {
-    interpreter->executeBlock(declaration->body, env);  // Replace the Interpreter's env with the given one and then execute the code.
-  } catch (const ReturnException& ret) {
-    if (isInitializer) return closure->getAt(0, "this");
-    return ret.value;
-  }
-  if (isInitializer) return closure->getAt(0, "this");
-  return std::monostate {};
-}
 
 #endif

@@ -2,6 +2,21 @@
 #include <sstream>
 #include "./helper.h"
 
+/**
+ * There can be subtle rounding differences between platforms, -
+ * so allow for some error. For example, GCC uses 80 bit registers for doubles on non-Darwin x86 platforms. 
+ * A change in when values are written to memory (when it is shortened to 64 bits), -
+ * or comparing values between Darwin and non-Darwin platforms could lead to different results.
+*/
+bool isDoubleEqual(const double a, const double b) {
+  // Bitwise comparison to avoid issues with infinity and NaN.
+  if (std::memcmp(&a, &b, sizeof(double)) == 0) return true;
+  // If the sign bit is different, then it is definitely not equal. This handles cases like -0 != 0.
+  if (std::signbit(a) != std::signbit(b)) return false;
+  const double ep = (std::abs(a) + std::abs(b)) * std::numeric_limits<double>::epsilon();
+  return std::abs(a - b) <= ep;
+}
+
 std::string unescapeStr(const std::string& str) {
   std::ostringstream oss;
   auto curr = cbegin(str);

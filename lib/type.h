@@ -65,8 +65,10 @@ enum TokenType : uint8_t {
   TOTAL,
 };
 
-struct Invokable;
+
+// Forward declarations.
 struct ClassInstance;
+struct Invokable;
 struct Obj;
 using typeRuntimeValue = 
   std::variant<
@@ -82,6 +84,72 @@ using typeRuntimeValue =
     // VM & Compiler fields.
     Obj*  // Pointer to the heap value.
   >;
+
+// Class "Invokable", for function and method.
+struct Interpreter;
+struct Invokable {  
+  virtual std::string toString(void) = 0;
+  virtual size_t arity() = 0;
+  virtual typeRuntimeValue invoke(Interpreter*, std::vector<typeRuntimeValue>&) = 0;
+  virtual ~Invokable() {}
+};
+
+/**
+ * Class "Function".
+*/
+struct Env;
+struct FunctionStmt;
+struct Function : public Invokable {
+  const std::shared_ptr<const FunctionStmt> declaration;
+  std::shared_ptr<Env> closure;  // Capture the env at the definition place.
+  bool isInitializer;
+  Function(std::shared_ptr<const FunctionStmt> declaration, std::shared_ptr<Env> closure, bool isInitializer) : declaration(declaration), closure(closure), isInitializer(isInitializer) {}
+  std::string toString(void) override;
+  size_t arity() override;
+  typeRuntimeValue invoke(Interpreter*, std::vector<typeRuntimeValue>&) override;
+  std::shared_ptr<Function> bind(std::shared_ptr<ClassInstance>);
+};
+
+/**
+ * Class "Class".
+ * 
+ * Class() -> 
+ * ClassInstance -> 
+ * (GetExpr / SetExpr) -> method / field.
+*/
+struct Class : public Invokable, public std::enable_shared_from_this<Class> {
+  const std::string_view name;
+  std::shared_ptr<Class> superClass;
+  std::shared_ptr<Function> initializer;
+  std::unordered_map<std::string_view, std::shared_ptr<Function>> methods;
+  explicit Class(
+    const std::string_view name, 
+    std::shared_ptr<Class> superClass,
+    std::unordered_map<std::string_view, std::shared_ptr<Function>>& methods) 
+    : name(name), superClass(superClass), methods(methods) {
+      initializer = findMethod(INITIALIZER_NAME);
+    }
+  std::string toString(void) override;
+  size_t arity() override;
+  typeRuntimeValue invoke(Interpreter*, std::vector<typeRuntimeValue>&) override;
+  std::shared_ptr<Function> findMethod(const std::string_view);
+};
+
+
+/**
+ * Class "ClassInstance".
+ * The runtime representation of the Class instance.
+*/
+struct Token;
+struct ClassInstance : public std::enable_shared_from_this<ClassInstance> {
+  std::shared_ptr<Class> thisClass;
+  std::unordered_map<std::string_view, typeRuntimeValue> fields;  // Runtime state of each instance.
+  explicit ClassInstance(std::shared_ptr<Class> thisClass) : thisClass(thisClass) {}
+  std::string toString(void);
+  typeRuntimeValue get(const Token&);
+  void set(const Token&, typeRuntimeValue);
+};
+
 
 /**
  * Interpreter Related Types
@@ -99,15 +167,6 @@ enum class ClassType : uint8_t {
   SUBCLASS,
 };
 
-
-struct Interpreter;
-// Class "Invokable", for function and method.
-struct Invokable {  
-  virtual std::string toString(void) = 0;
-  virtual size_t arity() = 0;
-  virtual typeRuntimeValue invoke(Interpreter*, std::vector<typeRuntimeValue>&) = 0;
-  virtual ~Invokable() {}
-};
 
 using typeKeywordList = std::unordered_map<std::string_view, TokenType>;
 using typeScopeRecord = std::unordered_map<std::string_view, bool>;
