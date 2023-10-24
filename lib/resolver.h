@@ -10,6 +10,7 @@
 #include "./env.h"
 #include "./error.h"
 #include "./type.h"
+#include "./common.h"
 
 /**
  * Visit every node in the AST to do the variable resolution.
@@ -145,7 +146,7 @@ struct Resolver : public ExprVisitor, public StmtVisitor {
      // The method name would be dynamically dispatched, no need to store it in the context map.
     for (const auto& method : stmt->methods) {
       auto declaration = FunctionType::METHOD;
-      if (method->name.lexeme == "init") { 
+      if (method->name.lexeme == INITIALIZER_NAME) { 
         declaration = FunctionType::INITIALIZER;
       }
       resolveFunction(method, declaration);

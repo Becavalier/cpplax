@@ -22,28 +22,19 @@
 #include "./helper.h"
 #include "./env.h"
 #include "./type.h"
+#include "./common.h"
 
 // Forward declarations.
 struct Interpreter;
 struct ClassInstance;
 
 /**
- * Class "Invokable", for function and method.
-*/
-struct Invokable {  
-  virtual const char* toString(void) = 0;
-  virtual size_t arity() = 0;
-  virtual typeRuntimeValue invoke(Interpreter*, std::vector<typeRuntimeValue>&) = 0;
-  virtual ~Invokable() {}
-};
-
-/**
  * Class "Function".
 */
 struct Function : public Invokable {
   Function(std::shared_ptr<const FunctionStmt> declaration, std::shared_ptr<Env> closure, bool isInitializer) : declaration(declaration), closure(closure), isInitializer(isInitializer) {}
-  const char* toString(void) override { 
-    return "<rt-core>"; 
+  std::string toString(void) override { 
+    return "<fn " + std::string { declaration->name.lexeme } +  ">"; 
   }
   size_t arity() override { 
     return declaration->parames.size(); 
@@ -73,10 +64,10 @@ struct Class : public Invokable, public std::enable_shared_from_this<Class> {
     std::shared_ptr<Class> superClass,
     std::unordered_map<std::string_view, std::shared_ptr<Function>>& methods) 
     : name(name), superClass(superClass), methods(methods) {
-      initializer = findMethod("init");
+      initializer = findMethod(INITIALIZER_NAME);
     }
-  const char* toString(void) override { 
-    return "<rt-core>"; 
+  std::string toString(void) override { 
+    return "<class " + std::string { name } + ">"; 
   }
   size_t arity() override {
     return initializer == nullptr ? 0 : initializer->arity();
@@ -161,8 +152,8 @@ struct Interpreter : public ExprVisitor, public StmtVisitor {
   Interpreter() {
     // Define internal functions.
     class InternalFunClockDef : public Invokable {
-      const char* toString(void) override { 
-        return "<rt-native-fn>"; 
+      std::string toString(void) override { 
+        return "<fn native>"; 
       }
       size_t arity() override { return 0; };
       typeRuntimeValue invoke(Interpreter*, std::vector<typeRuntimeValue>&) override {
@@ -170,8 +161,8 @@ struct Interpreter : public ExprVisitor, public StmtVisitor {
       };
     };
     class InternalFunPrintDef : public Invokable {
-      const char* toString(void) override { 
-        return "<rt-native-fn>"; 
+      std::string toString(void) override { 
+        return "<fn native>"; 
       }
       size_t arity() override { return 1; };
       typeRuntimeValue invoke(Interpreter*, std::vector<typeRuntimeValue>& arguments) override {
@@ -191,8 +182,6 @@ struct Interpreter : public ExprVisitor, public StmtVisitor {
   auto isTruthy(typeRuntimeValue obj) const {
     if (std::holds_alternative<std::monostate>(obj)) return false;
     if (std::holds_alternative<bool>(obj)) return std::get<bool>(obj);
-    if (std::holds_alternative<std::string_view>(obj)) return std::get<std::string_view>(obj).size() > 0;
-    if (std::holds_alternative<typeRuntimeNumericValue>(obj)) return !isDoubleEqual(std::get<typeRuntimeNumericValue>(obj), 0);
     return true;
   }
   void checkNumberOperand(const Token& op, const typeRuntimeValue& operand) const {
@@ -419,7 +408,7 @@ struct Interpreter : public ExprVisitor, public StmtVisitor {
     }
     std::unordered_map<std::string_view, std::shared_ptr<Function>> methods;
     for (const auto& method : stmt->methods) {
-      auto function = std::make_shared<Function>(method, env, method->name.lexeme == "init");  // Capture the current env as closure, which includes the reference to super class.
+      auto function = std::make_shared<Function>(method, env, method->name.lexeme == INITIALIZER_NAME);  // Capture the current env as closure, which includes the reference to super class.
       methods[method->name.lexeme] = function;
     }
     auto thisClass = std::make_shared<Class>(stmt->name.lexeme, superClass, methods);  // Store all methods (behavior) into Class.

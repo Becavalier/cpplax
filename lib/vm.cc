@@ -114,10 +114,12 @@ void VM::callValue(typeRuntimeValue& callee, uint8_t argCount) {
         call(bound->method, argCount);
         return;
       }
-      default: {
+      case ObjType::OBJ_CLOSURE:
+      case ObjType::OBJ_FUNCTION: {
         call(calleeObj, argCount);  // OBJ_FUNCTION, OBJ_CLOSURE.
         return;
-      };
+      }
+      default: ;
     }
   }
   throwRuntimeError("can only call functions and classes.");

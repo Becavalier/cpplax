@@ -1,0 +1,24 @@
+print(true == true);    // "true".
+print(true == false);   // "false".
+print(false == true);   // "false".
+print(false == false);  // "true".
+
+// Not equal to other types.
+print(true == 1);        // "false".
+print(false == 0);       // "false".
+print(true == "true");   // "false".
+print(false == "false"); // "false".
+print(false == "");      // "false".
+print(false == nil);      // "false".
+
+print(true != true);    // "false".
+print(true != false);   // "true".
+print(false != true);   // "true".
+print(false != false);  // "false".
+
+// Not equal to other types.
+print(true != 1);        // "true".
+print(false != 0);       // "true".
+print(true != "true");   // "true".
+print(false != "false"); // "true".
+print(false != "");      // "true".

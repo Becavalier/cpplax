@@ -48,6 +48,8 @@ std::string stringifyVariantValue(const T& literal) {
       return arg;
     } else if constexpr (std::is_same_v<K, Obj*>) {
       return Obj::printObjNameByEnum(arg);
+    } else if constexpr (std::is_same_v<K, std::shared_ptr<Invokable>>) {
+      return std::string { arg->toString() };
     } else {
       return std::string { "<rt-value>" };
     }

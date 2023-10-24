@@ -1,0 +1,12 @@
+{
+  var foo = "closure";
+  fn f() {
+    {
+      print(foo);  // "closure".
+      var foo = "shadow";
+      print(foo);  // "shadow".
+    }
+    print(foo); // "closure".
+  }
+  f();
+}

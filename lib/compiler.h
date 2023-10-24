@@ -161,7 +161,7 @@ struct Compiler {
       advance();
       return;
     }
-    errorAtCurrent(msg);
+    errorAtPrevious(msg);
   }
   void errorAtCurrent(const char* msg) {
     throw TokenError { peek(), msg };

@@ -65,6 +65,24 @@ enum TokenType : uint8_t {
   TOTAL,
 };
 
+struct Invokable;
+struct ClassInstance;
+struct Obj;
+using typeRuntimeValue = 
+  std::variant<
+    // Common fields.
+    std::monostate, 
+    std::string_view, 
+    typeRuntimeNumericValue, 
+    bool,
+    // Interpreter fields.
+    std::shared_ptr<Invokable>, 
+    std::shared_ptr<ClassInstance>,
+    std::string,
+    // VM & Compiler fields.
+    Obj*  // Pointer to the heap value.
+  >;
+
 /**
  * Interpreter Related Types
 */
@@ -81,10 +99,16 @@ enum class ClassType : uint8_t {
   SUBCLASS,
 };
 
-struct Invokable;
-struct ClassInstance;
-struct Token;
-struct Obj;
+
+struct Interpreter;
+// Class "Invokable", for function and method.
+struct Invokable {  
+  virtual std::string toString(void) = 0;
+  virtual size_t arity() = 0;
+  virtual typeRuntimeValue invoke(Interpreter*, std::vector<typeRuntimeValue>&) = 0;
+  virtual ~Invokable() {}
+};
+
 using typeKeywordList = std::unordered_map<std::string_view, TokenType>;
 using typeScopeRecord = std::unordered_map<std::string_view, bool>;
 
@@ -157,20 +181,6 @@ enum class FunctionScope : uint8_t {
   TYPE_INITIALIZER,
 };
 
-using typeRuntimeValue = 
-  std::variant<
-    // Common fields.
-    std::monostate, 
-    std::string_view, 
-    typeRuntimeNumericValue, 
-    bool,
-    // Interpreter fields.
-    std::shared_ptr<Invokable>, 
-    std::shared_ptr<ClassInstance>,
-    std::string,
-    // VM & Compiler fieldds.
-    Obj*  // Pointer to the heap value.
-  >;
 using typeRuntimeConstantArray = std::vector<typeRuntimeValue>;
 using typeVMStack = std::array<typeRuntimeValue, STACK_MAX>;
 template<typename T = typeRuntimeValue> 

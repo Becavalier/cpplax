@@ -1,4 +1,4 @@
-// Variable declaration.
+// Variable declaration and assignment.
 var a = "a";
 var b = "b";
 var c = "c";
@@ -7,3 +7,10 @@ a = b = c;  // Assignment is right-associative.
 print(a);  // "c".
 print(b);  // "c".
 print(c);  // "c".
+
+var d = 1 * (2 + 3);
+print(d);  // "5"
+
+var e = a = "var";
+print(a);  // "var".
+print(e);  // "var".

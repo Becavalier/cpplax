@@ -93,8 +93,6 @@ struct VM {
   auto isFalsey(const typeRuntimeValue obj) const {
     if (std::holds_alternative<std::monostate>(obj)) return true;
     if (std::holds_alternative<bool>(obj)) return !std::get<bool>(obj);
-    if (std::holds_alternative<std::string_view>(obj)) return std::get<std::string_view>(obj).size() == 0;
-    if (std::holds_alternative<typeRuntimeNumericValue>(obj)) return isDoubleEqual(std::get<typeRuntimeNumericValue>(obj), 0);
     return false;
   }
   auto readByte(void) {

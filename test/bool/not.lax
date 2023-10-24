@@ -1,0 +1,6 @@
+print(!true);    // "false".
+print(!false);   // "true".
+print(!!true);   // "true".
+print(!nil);     // "true".
+print(!0);       // "false".
+print(!"");      // "false".

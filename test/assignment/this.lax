@@ -1,0 +1,7 @@
+class Foo {
+  Foo() {
+    this = "value";  // [Line 3] Error: at "'='", invalid assignment target.
+  }
+}
+
+Foo();

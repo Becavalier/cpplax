@@ -1,0 +1,10 @@
+fn f() {
+  var a = "a";
+  var b = "b";
+  fn g() {
+    print(b);  // "b".
+    print(a);  // "a".
+  }
+  g();
+}
+f();

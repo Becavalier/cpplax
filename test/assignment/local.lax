@@ -1,0 +1,11 @@
+// Local variable declaration.
+{
+  var a = "before";
+  print(a);  // "before".
+
+  a = "after";
+  print(a);  // "after".
+
+  print(a = "arg");  // "arg".
+  print(a);   // "arg". 
+}

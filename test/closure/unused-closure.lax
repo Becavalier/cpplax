@@ -1,0 +1,8 @@
+{
+  var a = "a";
+  if (false) {
+    fn foo() { a; }
+  }
+}
+
+print("ok");  // "ok".

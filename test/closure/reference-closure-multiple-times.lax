@@ -1,0 +1,12 @@
+var f;
+
+{
+  var a = "a";
+  fn f_() {
+    print(a);  // "a".
+    print(a);  // "a".
+  }
+  f = f_;
+}
+
+f();
