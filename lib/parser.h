@@ -71,7 +71,7 @@ class Parser {
   }
   const auto& consume(TokenType type, const std::string& msg) {
     if (check(type)) return advance();
-    throw error(previous(), msg);
+    throw error(peek(), msg);
   }
   Stmt::sharedStmtPtr varDeclaration(void) {
     // varDecl → "var" IDENTIFIER ( "=" expression )? ";" ;
@@ -108,7 +108,7 @@ class Parser {
     std::vector<std::reference_wrapper<const Token>> parameters;
     if (!check(TokenType::RIGHT_PAREN)) {
       do {
-        if (parameters.size() >= 255) {
+        if (parameters.size() == 255) {
           error(peek(), "can't have more than 255 parameters.");
         }
         parameters.push_back(consume(TokenType::IDENTIFIER, "expect parameter name."));
@@ -172,16 +172,11 @@ class Parser {
     Stmt::sharedStmtPtr body = statement();
     // Desugar to "while" loop.
     if (increment != nullptr) {
-      const auto incrementStmt = std::make_shared<ExpressionStmt>(increment);
-      if (const auto castPtr = std::dynamic_pointer_cast<BlockStmt>(body)) {
-        castPtr->statements.push_back(incrementStmt);
-      } else {
-        body = std::make_shared<BlockStmt>(
-          std::vector<Stmt::sharedStmtPtr> { 
-            body, incrementStmt,  // Append the increment to the iteration body.
-          }
-        );
-      }
+      body = std::make_shared<BlockStmt>(
+        std::vector<Stmt::sharedStmtPtr> { 
+          body, std::make_shared<ExpressionStmt>(increment),  // Append the increment to the iteration body.
+        }
+      );
     }
     if (condition == nullptr) condition = std::make_shared<LiteralExpr>(true);  // Make it a dead loop if no condition set.
     body = std::make_shared<WhileStmt>(condition, body);
@@ -265,7 +260,7 @@ class Parser {
     std::vector<Expr::sharedExprPtr> arguments;
     if (!check(TokenType::RIGHT_PAREN)) {
       do {
-        if (arguments.size() >= 255) {
+        if (arguments.size() == 255) {
           error(peek(), "can't have more than 255 arguments.");
         }
         arguments.push_back(expression());

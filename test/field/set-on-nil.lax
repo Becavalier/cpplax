@@ -1,0 +1,1 @@
+nil.foo = "value";  // expect runtime error: only instances have fields.

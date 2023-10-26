@@ -1,0 +1,3 @@
+fn foo() {}
+
+class Subclass < foo {} // expect runtime error: superclass must be a class.

@@ -1,0 +1,13 @@
+fn returnArg(arg) {
+  return arg;
+}
+
+fn returnfnCallWithArg(func, arg) {
+  return returnArg(func)(arg);
+}
+
+fn printArg(arg) {
+  print(arg);
+}
+
+returnfnCallWithArg(printArg, "hello world"); // expect: hello world

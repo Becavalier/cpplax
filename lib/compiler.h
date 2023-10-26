@@ -161,7 +161,7 @@ struct Compiler {
       advance();
       return;
     }
-    errorAtPrevious(msg);
+    errorAtCurrent(msg);
   }
   void errorAtCurrent(const char* msg) {
     throw TokenError { peek(), msg };
@@ -442,7 +442,7 @@ struct Compiler {
       do {
         expression();
         if (argCount == 255) {
-          errorAtCurrent("can't have more than 255 arguments.");
+          errorAtPrevious("can't have more than 255 arguments.");
         }
         argCount++;
       } while (match(TokenType::COMMA));
@@ -638,10 +638,10 @@ struct Compiler {
     consume(TokenType::LEFT_PAREN, "expect '(' after function name.");
     if (!check(TokenType::RIGHT_PAREN)) {
       do {
-        compilingFunc->arity++;
-        if (compilingFunc->arity > 255) {
+        if (compilingFunc->arity == 255) {
           errorAtCurrent("can't have more than 255 parameters.");
         }
+        compilingFunc->arity++;
         defineVariable(parseVariable("expect parameter name."));
       } while (match(TokenType::COMMA));
     }

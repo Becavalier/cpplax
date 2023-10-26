@@ -250,7 +250,7 @@ struct Interpreter : public ExprVisitor, public StmtVisitor {
   typeRuntimeValue visitSetExpr(std::shared_ptr<const SetExpr> expr) override {
     auto obj = evaluate(expr->obj);
     auto vp = std::get_if<std::shared_ptr<ClassInstance>>(&obj);  // Only "ClassInstance" is able to have a setter.
-    if (vp == nullptr) throw TokenError { expr->name, "only instances have fields." };
+    if (vp == nullptr) throw TokenError { expr->name, "only instances have properties." };
     auto value = evaluate(expr->value);
     (*vp)->set(expr->name, value);
     return value;

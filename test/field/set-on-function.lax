@@ -1,0 +1,3 @@
+fn foo() {}
+
+foo.bar = "value";  // expect runtime error: only instances have fields.
