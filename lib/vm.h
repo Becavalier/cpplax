@@ -84,10 +84,11 @@ struct VM {
   void throwRuntimeError(const std::string& msg) {
     throw VMError { currentLine(), msg };
   }
-  void checkNumberOperands(int8_t n) {
-    while (--n >= 0) {
-      if (!std::holds_alternative<typeRuntimeNumericValue>(peek(n)))
-        throwRuntimeError(n > 1 ? "operand must be a number." : "operands must be numbers.");
+  void checkNumberOperands(uint8_t n) {
+    auto counter = n + 1;
+    while (--counter >= 1) {
+      if (!std::holds_alternative<typeRuntimeNumericValue>(peek(counter - 1)))
+        throwRuntimeError(n == 1 ? "operand must be a number." : "operands must be numbers.");
     }
   }
   auto isFalsey(const typeRuntimeValue obj) const {

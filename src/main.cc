@@ -18,8 +18,8 @@
 #include "../lib/chunk.h"
 #include "../lib/memory.h"
 #include "../lib/vm.h"
+#include "../lib/common.h"
 
-#define PATH_ARG_IDX 0
 
 namespace fs = std::filesystem;
 
@@ -87,7 +87,7 @@ struct Lax {
   }
 };
 
-auto main(int argc, const char* argv[]) -> int {
+int main(int argc, const char* argv[]) {
   if (argc > 3) {
     reportIllegalUsage();
   } 

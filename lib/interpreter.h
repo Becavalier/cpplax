@@ -13,6 +13,8 @@
 #include <vector>
 #include <string>
 #include <ctime>
+#include <algorithm>
+#include <iterator>
 #include <unordered_map>
 #include <variant>
 #include <optional>
@@ -34,6 +36,7 @@ struct ReturnException : public std::exception {
  * Class "Interpreter".
 */
 struct Interpreter : public ExprVisitor, public StmtVisitor {
+  size_t functionCallDepth = 0;
   const std::shared_ptr<Env> globals = std::make_shared<Env>();
   // Saving the scope steps for locals.
   std::unordered_map<Expr::sharedConstExprPtr, size_t> locals;  
@@ -181,39 +184,17 @@ struct Interpreter : public ExprVisitor, public StmtVisitor {
         RET_NUM_BINARY_OP(expr->op, -, left, right)
       } 
       case TokenType::PLUS: {
-        const auto str = std::visit([](auto&& argLeft, auto&& argRight) -> std::optional<typeRuntimeValue> {
-          using T = std::decay_t<decltype(argLeft)>;
-          using K = std::decay_t<decltype(argRight)>;
-          if constexpr (std::is_same_v<T, typeRuntimeNumericValue>) {
-            if constexpr (std::is_same_v<K, typeRuntimeNumericValue>) {
-              return argLeft + argRight;
-            } else if constexpr (std::is_same_v<K, std::string_view>) {
-              return std::to_string(argLeft) + std::string { argRight };
-            } else if constexpr (std::is_same_v<K, std::string>) {
-              return std::to_string(argLeft) + argRight;
-            }
-          } else if constexpr (std::is_same_v<T, std::string_view>) {
-            const auto argLeftStr = std::string { argLeft };
-            if constexpr (std::is_same_v<K, typeRuntimeNumericValue>) {
-              return argLeftStr + std::to_string(argRight);
-            } else if constexpr (std::is_same_v<K, std::string_view>) {
-              return argLeftStr + std::string { argRight };
-            } else if constexpr (std::is_same_v<K, std::string>) {
-              return argLeftStr + argRight;
-            }
-          } else if constexpr (std::is_same_v<T, std::string>) {
-            if constexpr (std::is_same_v<K, typeRuntimeNumericValue>) {
-              return argLeft + std::to_string(argRight);
-            } else if constexpr (std::is_same_v<K, std::string_view>) {
-              return argLeft + std::string { argRight };
-            } else if constexpr (std::is_same_v<K, std::string>) {
-              return argLeft + argRight;
-            }
-          }
-          return std::nullopt;
-        }, left, right);
-        if (!str.has_value()) throw TokenError { expr->op, "operand must be type of number or string." };
-        return str.value();
+        /**
+         *  If both sides are double, then return double,
+         *  If either operand is a string, then the final result is string.
+         *  Otherwise, error.
+        */
+        if (isNumericValue(left) && isNumericValue(right)) {
+          return std::get<typeRuntimeNumericValue>(left) + std::get<typeRuntimeNumericValue>(right);
+        } else if (isStringValue(left) || isStringValue(right)) {
+          return stringifyVariantValue(left) + stringifyVariantValue(right);  // String concatenation. 
+        }
+        throw TokenError { expr->op, "invalid operand types for \"+\" operator." };
       }
       case TokenType::SLASH: {
         RET_NUM_BINARY_OP(expr->op, /, left, right)
@@ -227,11 +208,15 @@ struct Interpreter : public ExprVisitor, public StmtVisitor {
     #undef NUM_BINARY_OP
   }
   typeRuntimeValue visitCallExpr(std::shared_ptr<const CallExpr> expr) override {
+    if (functionCallDepth == UINT8_MAX) {
+      throw TokenError { expr->paren, "stack overflow." };
+    }
     auto callee = evaluate(expr->callee);  // "primary" -> TokenType::IDENTIFIER -> VariableExpr -> Env.get.
     std::vector<typeRuntimeValue> arguments;
-    for (const auto& argument : expr->arguments) {
-      arguments.push_back(evaluate(argument));  // Save evaluated args.
-    }
+    std::transform(expr->arguments.cbegin(), expr->arguments.cend(), std::back_inserter(arguments), 
+      [this](const auto& argument) {
+        return evaluate(argument);  // Save evaluated args.
+      });
     if (!std::holds_alternative<std::shared_ptr<Invokable>>(callee)) {  // Check if it's callable.
       throw TokenError { expr->paren, "can only call functions and classes." };
     }
@@ -239,7 +224,10 @@ struct Interpreter : public ExprVisitor, public StmtVisitor {
     if (arguments.size() != function->arity()) {  // Check if it matches the calling arity.
       throw TokenError { expr->paren, "expected " + std::to_string(function->arity()) + " arguments but got " + std::to_string( arguments.size()) + "." };
     }
-    return function->invoke(this, arguments);
+    functionCallDepth++;
+    const auto& ret = function->invoke(this, arguments);
+    functionCallDepth--;
+    return ret;
   }
   typeRuntimeValue visitGetExpr(std::shared_ptr<const GetExpr> expr) override {
     auto obj = evaluate(expr->obj);
@@ -311,7 +299,7 @@ struct Interpreter : public ExprVisitor, public StmtVisitor {
       const auto invalidSuperErrorMsg = "super class must be a class.";
       if (superClassPtr == nullptr) {
         throw TokenError { stmt->superClass->name, invalidSuperErrorMsg };
-      } else {
+      } else { 
         superClass = std::dynamic_pointer_cast<Class>(*superClassPtr);
         if (superClass == nullptr) {
           throw TokenError { stmt->superClass->name, invalidSuperErrorMsg };

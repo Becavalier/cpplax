@@ -1,0 +1,1 @@
+print(true + nil);  // expect runtime error: invalid operand types for "+" operator.

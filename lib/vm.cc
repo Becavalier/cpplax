@@ -205,20 +205,15 @@ VMResult VM::run(void) {
       case OpCode::OP_ADD: {
         const auto y = pop();
         const auto x = pop();
-        // TODO: supporting concatenating string and number.
-        if (std::holds_alternative<Obj*>(x) && std::holds_alternative<Obj*>(y)) {
-          const auto heapX = std::get<Obj*>(x);
-          const auto heapY = std::get<Obj*>(y);
-          if (heapX->type == ObjType::OBJ_STRING && heapY->type == ObjType::OBJ_STRING) {
-            push(internedConstants.add(heapX->cast<ObjString>()->str + heapY->cast<ObjString>()->str));
-            break;
-          }
-        } else {
-          // FIXME: error when variant has no value of numeric type.
-          push(std::get<typeRuntimeNumericValue>(x) +  std::get<typeRuntimeNumericValue>(y));
+        if (isNumericValue(x) && isNumericValue(y)) {
+          push(std::get<typeRuntimeNumericValue>(x) + std::get<typeRuntimeNumericValue>(y));
           break;
-        }
-        throwRuntimeError("operands must be two numbers or two strings.");
+        } else if ((isObjStringValue(x) || isObjStringValue(y))) {
+          const auto str = stringifyVariantValue(x) + stringifyVariantValue(y);
+          push(internedConstants.add(str));
+          break;
+        }  
+        throwRuntimeError("invalid operand types for \"+\" operator.");
       }
       case OpCode::OP_SUBTRACT: NUM_BINARY_OP(-); break;
       case OpCode::OP_MULTIPLY: NUM_BINARY_OP(*); break;
@@ -252,26 +247,7 @@ VMResult VM::run(void) {
       case OpCode::OP_EQUAL: {
         const auto x = pop();
         const auto y = pop();
-        if (std::holds_alternative<Obj*>(x) && std::holds_alternative<Obj*>(y)) {
-          const auto heapX = std::get<Obj*>(x);
-          const auto heapY = std::get<Obj*>(y);
-          if (heapX->type == heapY->type) {
-            switch (heapX->type) {
-              case ObjType::OBJ_STRING: {
-                push(heapX == heapY);
-                break;
-              }
-              default: {
-                push(false); 
-                break;
-              }
-            }
-          } else {
-            push(false);
-          }
-        } else {
-          push(x == y);
-        }
+        push(x == y);
         break;
       }
       case OpCode::OP_GREATER: NUM_BINARY_OP(>); break;

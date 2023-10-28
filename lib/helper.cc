@@ -1,6 +1,10 @@
 #include <string>
 #include <sstream>
 #include "./helper.h"
+ 
+bool isObjStringValue(const typeRuntimeValue& rt) {
+  return std::holds_alternative<Obj*>(rt) && std::get<Obj*>(rt)->type == ObjType::OBJ_STRING;
+}
 
 /**
  * There can be subtle rounding differences between platforms, -

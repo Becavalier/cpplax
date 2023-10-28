@@ -24,7 +24,7 @@ struct Memory {
   void setCompiler(Compiler* compilerPtr) { compiler = compilerPtr; }
   inline void freeObj(Obj* obj) {
 #ifdef DEBUG_LOG_GC
-    printf("[%p] Free type %s\n", obj, Obj::printObjNameByEnum(obj).c_str());
+    printf("[%p] Free type %s\n", obj, obj->toString().c_str());
 #endif
     bytesAllocated -= sizeof(*obj);
     delete obj;

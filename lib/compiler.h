@@ -250,7 +250,7 @@ struct Compiler {
   }
   void addLocal(const Token* name) {
     if (localCount == UINT8_COUNT) {
-      errorAtCurrent("too many local variables in function.");
+      errorAtPrevious("too many local variables in function.");
     }
     auto& local = locals[localCount++];
     local.name = name;
@@ -307,7 +307,7 @@ struct Compiler {
       }
     }
     if (upvalueCount == UINT8_COUNT) {
-      errorAtCurrent("too many closure variables in function.");
+      errorAtPrevious("too many closure variables in function.");
     }
     upvalues[upvalueCount].isLocal = isLocal;
     upvalues[upvalueCount].index = index;

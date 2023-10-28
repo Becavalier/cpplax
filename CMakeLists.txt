@@ -7,7 +7,6 @@ set(CMAKE_CXX_COMPILER /usr/bin/clang++)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 set(CORE_LIB_PATH lib)
-set(TEST_PATH test)
 set(EXECUTABLE_OUTPUT_PATH bin)
 
 # Handle different build types.

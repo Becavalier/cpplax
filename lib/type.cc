@@ -44,7 +44,7 @@ typeRuntimeValue Class::invoke(Interpreter* interpreter, std::vector<typeRuntime
   auto instance = std::make_shared<ClassInstance>(shared_from_this());  // Return a new instance.
   if (initializer != nullptr) {
     initializer->bind(instance)->invoke(interpreter, arguments);  // Invoke the constructor.
-  } 
+  }
   return instance;
 }
 std::shared_ptr<Function> Class::findMethod(const std::string_view name) {
