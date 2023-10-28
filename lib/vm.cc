@@ -386,7 +386,7 @@ VMResult VM::run(void) {
       case OpCode::OP_INHERIT: {
         Obj* superclass = nullptr;
         if (!std::holds_alternative<Obj*>(peek(1)) || (superclass = std::get<Obj*>(peek(1)))->type != ObjType::OBJ_CLASS) {
-          throwRuntimeError("superclass must be a class.");
+          throwRuntimeError("super class must be a class.");
         }
         auto subclass = peekOfType<Obj*>(0);
         for (const auto& entity : superclass->cast<ObjClass>()->methods) {  // Copy the inherited methods to subclass.

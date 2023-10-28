@@ -682,9 +682,9 @@ struct Compiler {
   }
   void super_(bool) {
     if (currentClass == nullptr) {
-      errorAtCurrent("can't use 'super' outside of a class.");
+      errorAtPrevious("can't use 'super' outside of a class.");
     } else if (!currentClass->hasSuperclass) {
-      errorAtCurrent("can't use 'super' in a class with no superclass.");
+      errorAtPrevious("can't use 'super' in a class with no superclass.");
     }
     consume(TokenType::DOT, "expect '.' after 'super'.");
     consume(TokenType::IDENTIFIER, "expect superclass method name.");
